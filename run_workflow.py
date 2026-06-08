@@ -35,7 +35,22 @@ MEDICAL_RISK_TERMS = [
 def load_config(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
-    return json.loads(path.read_text(encoding="utf-8"))
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
+    validate_config(config)
+    return config
+
+
+def validate_config(config: dict) -> None:
+    required = ["shop_name", "industry", "topic", "main_offer"]
+    missing = [key for key in required if not str(config.get(key, "")).strip()]
+    if missing:
+        raise ValueError(f"Missing required config field(s): {', '.join(missing)}")
+    duration = int(config.get("duration_seconds", 24))
+    if duration < 15 or duration > 45:
+        raise ValueError("duration_seconds should be between 15 and 45 for this POC.")
 
 
 def ensure_dirs() -> None:
@@ -517,8 +532,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a local-business short-video workflow draft.")
     parser.add_argument("--config", default=str(ROOT / "config.json"))
     parser.add_argument("--demo-assets", action="store_true", help="Create placeholder images if no images exist.")
+    parser.add_argument("--clean", action="store_true", help="Clear generated output before running.")
     args = parser.parse_args()
 
+    if args.clean and OUTPUT_DIR.exists():
+        shutil.rmtree(OUTPUT_DIR)
     ensure_dirs()
     config_path = Path(args.config)
     config = load_config(config_path)
@@ -541,6 +559,12 @@ def main() -> None:
         encoding="utf-8",
     )
     print(f"Generated: {OUTPUT_DIR}")
+    print("Key outputs:")
+    print(f"- {OUTPUT_DIR / 'video_plan.md'}")
+    print(f"- {OUTPUT_DIR / 'preview.gif'}")
+    print(f"- {OUTPUT_DIR / 'preview.html'}")
+    print(f"- {OUTPUT_DIR / 'plan.json'}")
+    print(f"- {OUTPUT_DIR / 'voiceover.txt'}")
 
 
 if __name__ == "__main__":

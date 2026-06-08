@@ -24,6 +24,21 @@ The system automates:
 - voiceover text export
 - rough preview rendering
 
+## Output Principle
+
+The output should be treated as a generated video, not as a mock Douyin/TikTok/Shorts interface.
+
+Preview renders should prioritize:
+
+- visual composition
+- typography
+- pacing
+- brand feel
+- subtitle readability
+- final export quality
+
+They should avoid platform UI elements such as progress bars, platform labels, like/comment/share controls, or timecode overlays unless those elements are part of the actual video concept.
+
 ## Recommended First Verticals
 
 - dental / clinic education content

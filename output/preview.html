@@ -34,9 +34,9 @@
       inset: 0;
       z-index: 1;
       background:
-        linear-gradient(180deg, rgba(8,14,22,.78), rgba(8,14,22,.18) 31%, rgba(8,14,22,.18) 58%, rgba(8,14,22,.92)),
-        radial-gradient(circle at 24% 18%, rgba(86,142,255,.25), transparent 36%),
-        radial-gradient(circle at 76% 72%, rgba(54,211,153,.18), transparent 32%);
+        linear-gradient(180deg, rgba(8,14,22,.68), rgba(8,14,22,.10) 34%, rgba(8,14,22,.08) 58%, rgba(8,14,22,.88)),
+        radial-gradient(circle at 24% 18%, rgba(86,142,255,.18), transparent 34%),
+        radial-gradient(circle at 76% 72%, rgba(54,211,153,.12), transparent 30%);
     }
     .topbar {
       position: absolute;
@@ -46,64 +46,51 @@
       z-index: 2;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
     }
     .brand {
       min-width: 0;
-      max-width: 238px;
-      padding: 8px 11px;
-      border: 1px solid rgba(255,255,255,.28);
-      border-radius: 999px;
-      background: rgba(12,18,28,.58);
-      backdrop-filter: blur(12px);
+      max-width: 300px;
+      padding-left: 10px;
+      border-left: 4px solid #f8d66d;
       font-size: 13px;
-      line-height: 1;
+      line-height: 1.12;
       font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+      text-shadow: 0 2px 12px rgba(0,0,0,.45);
     }
     .sceneNo {
-      flex: 0 0 auto;
-      width: 40px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      border-radius: 999px;
-      background: rgba(255,255,255,.9);
-      color: #111827;
-      font-size: 12px;
-      font-weight: 800;
+      display: none;
     }
     .coverTitle {
       position: absolute;
       left: 22px;
       right: 22px;
-      top: 86px;
+      top: 74px;
       z-index: 2;
-      font-size: 28px;
+      font-size: 34px;
       line-height: 1.12;
       font-weight: 900;
       letter-spacing: 0;
-      text-shadow: 0 3px 18px rgba(0,0,0,.46);
+      text-shadow: 0 4px 20px rgba(0,0,0,.58);
     }
     .captionPanel {
       position: absolute;
       left: 18px;
       right: 18px;
-      bottom: 72px;
+      bottom: 46px;
       z-index: 2;
-      padding: 17px 18px 15px;
-      border: 1px solid rgba(255,255,255,.22);
-      border-radius: 18px;
-      background: rgba(8,13,20,.72);
-      backdrop-filter: blur(16px);
-      box-shadow: 0 18px 56px rgba(0,0,0,.36);
+      padding: 18px 18px 17px;
+      border-top: 1px solid rgba(255,255,255,.26);
+      border-radius: 0;
+      background: linear-gradient(180deg, rgba(8,13,20,.78), rgba(8,13,20,.58));
+      box-shadow: 0 -18px 56px rgba(0,0,0,.25);
     }
     .caption {
-      font-size: 25px;
+      font-size: 27px;
       line-height: 1.22;
       font-weight: 900;
       letter-spacing: 0;
@@ -111,41 +98,17 @@
       text-shadow: 0 2px 8px rgba(0,0,0,.32);
     }
     .meta {
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-      color: rgba(255,255,255,.78);
+      display: none;
     }
     .cta {
-      position: absolute;
-      left: 20px;
-      right: 20px;
-      bottom: 28px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-      color: rgba(255,255,255,.82);
+      display: none;
     }
     .cta strong {
       color: #fff;
       font-size: 13px;
     }
     .progressRail {
-      position: absolute;
-      left: 20px;
-      right: 20px;
-      bottom: 16px;
-      z-index: 2;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.22);
-      overflow: hidden;
+      display: none;
     }
     .progress {
       height: 100%;

@@ -310,9 +310,9 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       inset: 0;
       z-index: 1;
       background:
-        linear-gradient(180deg, rgba(8,14,22,.78), rgba(8,14,22,.18) 31%, rgba(8,14,22,.18) 58%, rgba(8,14,22,.92)),
-        radial-gradient(circle at 24% 18%, rgba(86,142,255,.25), transparent 36%),
-        radial-gradient(circle at 76% 72%, rgba(54,211,153,.18), transparent 32%);
+        linear-gradient(180deg, rgba(8,14,22,.68), rgba(8,14,22,.10) 34%, rgba(8,14,22,.08) 58%, rgba(8,14,22,.88)),
+        radial-gradient(circle at 24% 18%, rgba(86,142,255,.18), transparent 34%),
+        radial-gradient(circle at 76% 72%, rgba(54,211,153,.12), transparent 30%);
     }}
     .topbar {{
       position: absolute;
@@ -322,64 +322,51 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       z-index: 2;
       display: flex;
       align-items: center;
-      justify-content: space-between;
+      justify-content: flex-start;
       gap: 10px;
     }}
     .brand {{
       min-width: 0;
-      max-width: 238px;
-      padding: 8px 11px;
-      border: 1px solid rgba(255,255,255,.28);
-      border-radius: 999px;
-      background: rgba(12,18,28,.58);
-      backdrop-filter: blur(12px);
+      max-width: 300px;
+      padding-left: 10px;
+      border-left: 4px solid #f8d66d;
       font-size: 13px;
-      line-height: 1;
+      line-height: 1.12;
       font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+      text-shadow: 0 2px 12px rgba(0,0,0,.45);
     }}
     .sceneNo {{
-      flex: 0 0 auto;
-      width: 40px;
-      height: 30px;
-      display: grid;
-      place-items: center;
-      border-radius: 999px;
-      background: rgba(255,255,255,.9);
-      color: #111827;
-      font-size: 12px;
-      font-weight: 800;
+      display: none;
     }}
     .coverTitle {{
       position: absolute;
       left: 22px;
       right: 22px;
-      top: 86px;
+      top: 74px;
       z-index: 2;
-      font-size: 28px;
+      font-size: 34px;
       line-height: 1.12;
       font-weight: 900;
       letter-spacing: 0;
-      text-shadow: 0 3px 18px rgba(0,0,0,.46);
+      text-shadow: 0 4px 20px rgba(0,0,0,.58);
     }}
     .captionPanel {{
       position: absolute;
       left: 18px;
       right: 18px;
-      bottom: 72px;
+      bottom: 46px;
       z-index: 2;
-      padding: 17px 18px 15px;
-      border: 1px solid rgba(255,255,255,.22);
-      border-radius: 18px;
-      background: rgba(8,13,20,.72);
-      backdrop-filter: blur(16px);
-      box-shadow: 0 18px 56px rgba(0,0,0,.36);
+      padding: 18px 18px 17px;
+      border-top: 1px solid rgba(255,255,255,.26);
+      border-radius: 0;
+      background: linear-gradient(180deg, rgba(8,13,20,.78), rgba(8,13,20,.58));
+      box-shadow: 0 -18px 56px rgba(0,0,0,.25);
     }}
     .caption {{
-      font-size: 25px;
+      font-size: 27px;
       line-height: 1.22;
       font-weight: 900;
       letter-spacing: 0;
@@ -387,41 +374,17 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       text-shadow: 0 2px 8px rgba(0,0,0,.32);
     }}
     .meta {{
-      margin-top: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-      color: rgba(255,255,255,.78);
+      display: none;
     }}
     .cta {{
-      position: absolute;
-      left: 20px;
-      right: 20px;
-      bottom: 28px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      font-size: 12px;
-      color: rgba(255,255,255,.82);
+      display: none;
     }}
     .cta strong {{
       color: #fff;
       font-size: 13px;
     }}
     .progressRail {{
-      position: absolute;
-      left: 20px;
-      right: 20px;
-      bottom: 16px;
-      z-index: 2;
-      height: 4px;
-      border-radius: 999px;
-      background: rgba(255,255,255,.22);
-      overflow: hidden;
+      display: none;
     }}
     .progress {{
       height: 100%;
@@ -552,7 +515,7 @@ def write_markdown(plan: dict, compliance: dict) -> None:
     (OUTPUT_DIR / "video_plan.md").write_text(md, encoding="utf-8")
 
 
-def render_gif_preview(plan: dict, assets: list[dict]) -> None:
+def render_legacy_gif_preview(plan: dict, assets: list[dict]) -> None:
     frames = []
     frame_duration_ms = 1100
     width, height = 360, 640
@@ -706,6 +669,61 @@ def wrap_by_pixel(text: str, font, max_width: int) -> str:
     if current:
         lines.append(current)
     return "\n".join(lines[:4])
+
+
+def render_gif_preview(plan: dict, assets: list[dict]) -> None:
+    frames = []
+    frame_duration_ms = 1200
+    width, height = 360, 640
+    for idx, scene in enumerate(plan["scenes"]):
+        asset = assets[idx % len(assets)]["file"] if assets else ""
+        img_path = ASSETS_DIR / asset
+        base = crop_cover(Image.open(img_path).convert("RGB"), width, height)
+
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        odraw = ImageDraw.Draw(overlay)
+        odraw.rectangle((0, 0, width, 145), fill=(7, 12, 20, 122))
+        odraw.rectangle((0, 360, width, height), fill=(7, 12, 20, 178))
+        odraw.ellipse((-60, -80, 180, 160), fill=(77, 132, 255, 38))
+        odraw.ellipse((250, 430, 470, 700), fill=(52, 211, 153, 26))
+        base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
+        draw = ImageDraw.Draw(base)
+
+        font_brand = font_for_size(15)
+        font_title = font_for_size(34)
+        font_caption = font_for_size(27)
+
+        draw.rectangle((24, 26, 28, 54), fill=(248, 214, 109))
+        draw.text((38, 28), f"{plan['shop_name']} / {plan['industry']}", fill=(255, 255, 255), font=font_brand)
+        draw.multiline_text(
+            (22, 82),
+            wrap_by_pixel(plan["cover_text"], font_title, 315),
+            fill=(255, 255, 255),
+            font=font_title,
+            spacing=6,
+            stroke_width=3,
+            stroke_fill=(8, 13, 20),
+        )
+        draw.rectangle((22, 392, 338, 396), fill=(248, 214, 109))
+        draw.multiline_text(
+            (22, 420),
+            wrap_by_pixel(scene["caption"], font_caption, 315),
+            fill=(255, 255, 255),
+            font=font_caption,
+            spacing=8,
+            stroke_width=2,
+            stroke_fill=(8, 13, 20),
+        )
+        frames.append(base)
+    if frames:
+        frames[0].save(
+            OUTPUT_DIR / "preview.gif",
+            save_all=True,
+            append_images=frames[1:],
+            duration=frame_duration_ms,
+            loop=0,
+            optimize=True,
+        )
 
 
 def main() -> None:

@@ -16,58 +16,140 @@
       height: 640px;
       position: relative;
       overflow: hidden;
-      background: #0f172a;
+      background: #0b1118;
+      isolation: isolate;
     }
     .photo {
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      inset: -18px;
+      width: calc(100% + 36px);
+      height: calc(100% + 36px);
       object-fit: cover;
-      transform: scale(1.06);
-      transition: transform 1000ms ease;
-      filter: saturate(1.04) contrast(1.02);
+      transform: scale(1.04);
+      transition: transform 1200ms ease, filter 500ms ease;
+      filter: saturate(1.08) contrast(1.04) brightness(.92);
     }
     .shade {
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.08) 42%, rgba(0,0,0,.72));
+      z-index: 1;
+      background:
+        linear-gradient(180deg, rgba(8,14,22,.78), rgba(8,14,22,.18) 31%, rgba(8,14,22,.18) 58%, rgba(8,14,22,.92)),
+        radial-gradient(circle at 24% 18%, rgba(86,142,255,.25), transparent 36%),
+        radial-gradient(circle at 76% 72%, rgba(54,211,153,.18), transparent 32%);
+    }
+    .topbar {
+      position: absolute;
+      top: 22px;
+      left: 20px;
+      right: 20px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }
     .brand {
-      position: absolute;
-      top: 28px;
-      left: 24px;
-      right: 24px;
-      font-size: 16px;
+      min-width: 0;
+      max-width: 238px;
+      padding: 8px 11px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 999px;
+      background: rgba(12,18,28,.58);
+      backdrop-filter: blur(12px);
+      font-size: 13px;
+      line-height: 1;
       font-weight: 700;
-      text-shadow: 0 2px 8px rgba(0,0,0,.35);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    }
+    .sceneNo {
+      flex: 0 0 auto;
+      width: 40px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255,255,255,.9);
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .coverTitle {
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 86px;
+      z-index: 2;
+      font-size: 28px;
+      line-height: 1.12;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-shadow: 0 3px 18px rgba(0,0,0,.46);
+    }
+    .captionPanel {
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 72px;
+      z-index: 2;
+      padding: 17px 18px 15px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 18px;
+      background: rgba(8,13,20,.72);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 18px 56px rgba(0,0,0,.36);
     }
     .caption {
-      position: absolute;
-      left: 24px;
-      right: 24px;
-      bottom: 92px;
-      font-size: 31px;
+      font-size: 25px;
       line-height: 1.22;
-      font-weight: 800;
-      text-shadow: 0 3px 14px rgba(0,0,0,.8);
+      font-weight: 900;
+      letter-spacing: 0;
+      text-wrap: balance;
+      text-shadow: 0 2px 8px rgba(0,0,0,.32);
     }
     .meta {
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: rgba(255,255,255,.78);
+    }
+    .cta {
       position: absolute;
-      left: 24px;
-      right: 24px;
-      bottom: 34px;
-      font-size: 14px;
-      line-height: 1.35;
+      left: 20px;
+      right: 20px;
+      bottom: 28px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
       color: rgba(255,255,255,.82);
-      text-shadow: 0 2px 8px rgba(0,0,0,.7);
+    }
+    .cta strong {
+      color: #fff;
+      font-size: 13px;
+    }
+    .progressRail {
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: 16px;
+      z-index: 2;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.22);
+      overflow: hidden;
     }
     .progress {
-      position: absolute;
-      left: 0;
-      bottom: 0;
-      height: 5px;
-      background: #38bdf8;
+      height: 100%;
+      background: #f8d66d;
       width: 0;
     }
   </style>
@@ -76,10 +158,20 @@
   <div class="stage" id="stage">
     <img class="photo" id="photo" alt="">
     <div class="shade"></div>
-    <div class="brand" id="brand"></div>
-    <div class="caption" id="caption"></div>
-    <div class="meta" id="meta"></div>
-    <div class="progress" id="progress"></div>
+    <div class="topbar">
+      <div class="brand" id="brand"></div>
+      <div class="sceneNo" id="sceneNo"></div>
+    </div>
+    <div class="coverTitle" id="coverTitle"></div>
+    <div class="captionPanel">
+      <div class="caption" id="caption"></div>
+      <div class="meta">
+        <span id="meta"></span>
+        <span id="timecode"></span>
+      </div>
+    </div>
+    <div class="cta"><strong id="ctaMain"></strong><span id="platformTag"></span></div>
+    <div class="progressRail"><div class="progress" id="progress"></div></div>
   </div>
   <script>
     window.VIDEO_PAYLOAD = {"plan": {"shop_name": "星河口腔", "industry": "口腔门诊", "topic": "第一次洗牙前要知道什么", "platform": "douyin", "duration_seconds": 24, "cover_text": "第一次洗牙前要知道什么", "titles": ["本地社区想了解第一次洗牙前要知道什么，先看这条", "第一次来星河口腔前，可以先看这几点", "第一次洗牙前要知道什么别急着决定，先把流程问清楚", "给第一次了解口腔门诊的人一点参考", "星河口腔服务流程简单介绍"], "post_copy": "第一次洗牙前要知道什么简单整理了一版，适合第一次了解的朋友先做参考。具体情况建议结合自身需求，到正规机构当面咨询。", "scenes": [{"order": 1, "start": 0, "duration": 8, "asset": "demo_1.png", "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "effect": "slow_zoom_in"}, {"order": 2, "start": 8, "duration": 8, "asset": "demo_2.png", "asset_type": "环境/服务图", "caption": "到星河口腔前，建议先了解环境、流程和沟通方式。", "voiceover": "到星河口腔前，建议先了解环境、流程和沟通方式。", "effect": "pan_up"}, {"order": 3, "start": 16, "duration": 8, "asset": "demo_3.png", "asset_type": "核心卖点图", "caption": "这里重点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里重点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut"}], "subtitle_style": "white_text_with_dark_shadow", "bgm_style": "clean_light"}, "scenes": [{"order": 1, "start": 0, "duration": 8, "asset": "demo_1.png", "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "effect": "slow_zoom_in", "asset_file": "image_1.png"}, {"order": 2, "start": 8, "duration": 8, "asset": "demo_2.png", "asset_type": "环境/服务图", "caption": "到星河口腔前，建议先了解环境、流程和沟通方式。", "voiceover": "到星河口腔前，建议先了解环境、流程和沟通方式。", "effect": "pan_up", "asset_file": "image_2.png"}, {"order": 3, "start": 16, "duration": 8, "asset": "demo_3.png", "asset_type": "核心卖点图", "caption": "这里重点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里重点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut", "asset_file": "image_3.png"}]};
@@ -91,13 +183,23 @@
     const total = plan.duration_seconds;
     const photo = document.getElementById('photo');
     const brand = document.getElementById('brand');
+    const sceneNo = document.getElementById('sceneNo');
+    const coverTitle = document.getElementById('coverTitle');
     const caption = document.getElementById('caption');
     const meta = document.getElementById('meta');
+    const timecode = document.getElementById('timecode');
+    const ctaMain = document.getElementById('ctaMain');
+    const platformTag = document.getElementById('platformTag');
     const progress = document.getElementById('progress');
     let started = performance.now();
     let active = -1;
     brand.textContent = plan.shop_name + ' · ' + plan.industry;
     meta.textContent = plan.topic + ' / ' + plan.platform;
+    brand.textContent = plan.shop_name + ' · ' + plan.industry;
+    coverTitle.textContent = plan.cover_text;
+    meta.textContent = plan.topic;
+    ctaMain.textContent = '建议面诊咨询';
+    platformTag.textContent = plan.platform;
 
     function pickScene(t) {
       let current = scenes[scenes.length - 1];
@@ -115,7 +217,9 @@
         active = scene.order;
         photo.src = 'assets/' + scene.asset_file;
         caption.textContent = scene.caption;
-        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02)' : 'scale(1.14)';
+        sceneNo.textContent = String(scene.order).padStart(2, '0');
+        timecode.textContent = `${scene.start}-${scene.start + scene.duration}s`;
+        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02) translateY(-4px)' : 'scale(1.13) translateY(5px)';
       }
       progress.style.width = ((elapsed / total) * 100).toFixed(2) + '%';
       if (elapsed < total) requestAnimationFrame(render);

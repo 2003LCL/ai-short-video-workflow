@@ -292,58 +292,140 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       height: 640px;
       position: relative;
       overflow: hidden;
-      background: #0f172a;
+      background: #0b1118;
+      isolation: isolate;
     }}
     .photo {{
       position: absolute;
-      inset: 0;
-      width: 100%;
-      height: 100%;
+      inset: -18px;
+      width: calc(100% + 36px);
+      height: calc(100% + 36px);
       object-fit: cover;
-      transform: scale(1.06);
-      transition: transform 1000ms ease;
-      filter: saturate(1.04) contrast(1.02);
+      transform: scale(1.04);
+      transition: transform 1200ms ease, filter 500ms ease;
+      filter: saturate(1.08) contrast(1.04) brightness(.92);
     }}
     .shade {{
       position: absolute;
       inset: 0;
-      background: linear-gradient(180deg, rgba(0,0,0,.22), rgba(0,0,0,.08) 42%, rgba(0,0,0,.72));
+      z-index: 1;
+      background:
+        linear-gradient(180deg, rgba(8,14,22,.78), rgba(8,14,22,.18) 31%, rgba(8,14,22,.18) 58%, rgba(8,14,22,.92)),
+        radial-gradient(circle at 24% 18%, rgba(86,142,255,.25), transparent 36%),
+        radial-gradient(circle at 76% 72%, rgba(54,211,153,.18), transparent 32%);
+    }}
+    .topbar {{
+      position: absolute;
+      top: 22px;
+      left: 20px;
+      right: 20px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
     }}
     .brand {{
-      position: absolute;
-      top: 28px;
-      left: 24px;
-      right: 24px;
-      font-size: 16px;
+      min-width: 0;
+      max-width: 238px;
+      padding: 8px 11px;
+      border: 1px solid rgba(255,255,255,.28);
+      border-radius: 999px;
+      background: rgba(12,18,28,.58);
+      backdrop-filter: blur(12px);
+      font-size: 13px;
+      line-height: 1;
       font-weight: 700;
-      text-shadow: 0 2px 8px rgba(0,0,0,.35);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      box-shadow: 0 10px 30px rgba(0,0,0,.18);
+    }}
+    .sceneNo {{
+      flex: 0 0 auto;
+      width: 40px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      border-radius: 999px;
+      background: rgba(255,255,255,.9);
+      color: #111827;
+      font-size: 12px;
+      font-weight: 800;
+    }}
+    .coverTitle {{
+      position: absolute;
+      left: 22px;
+      right: 22px;
+      top: 86px;
+      z-index: 2;
+      font-size: 28px;
+      line-height: 1.12;
+      font-weight: 900;
+      letter-spacing: 0;
+      text-shadow: 0 3px 18px rgba(0,0,0,.46);
+    }}
+    .captionPanel {{
+      position: absolute;
+      left: 18px;
+      right: 18px;
+      bottom: 72px;
+      z-index: 2;
+      padding: 17px 18px 15px;
+      border: 1px solid rgba(255,255,255,.22);
+      border-radius: 18px;
+      background: rgba(8,13,20,.72);
+      backdrop-filter: blur(16px);
+      box-shadow: 0 18px 56px rgba(0,0,0,.36);
     }}
     .caption {{
-      position: absolute;
-      left: 24px;
-      right: 24px;
-      bottom: 92px;
-      font-size: 31px;
+      font-size: 25px;
       line-height: 1.22;
-      font-weight: 800;
-      text-shadow: 0 3px 14px rgba(0,0,0,.8);
+      font-weight: 900;
+      letter-spacing: 0;
+      text-wrap: balance;
+      text-shadow: 0 2px 8px rgba(0,0,0,.32);
     }}
     .meta {{
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
+      color: rgba(255,255,255,.78);
+    }}
+    .cta {{
       position: absolute;
-      left: 24px;
-      right: 24px;
-      bottom: 34px;
-      font-size: 14px;
-      line-height: 1.35;
+      left: 20px;
+      right: 20px;
+      bottom: 28px;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      font-size: 12px;
       color: rgba(255,255,255,.82);
-      text-shadow: 0 2px 8px rgba(0,0,0,.7);
+    }}
+    .cta strong {{
+      color: #fff;
+      font-size: 13px;
+    }}
+    .progressRail {{
+      position: absolute;
+      left: 20px;
+      right: 20px;
+      bottom: 16px;
+      z-index: 2;
+      height: 4px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.22);
+      overflow: hidden;
     }}
     .progress {{
-      position: absolute;
-      left: 0;
-      bottom: 0;
-      height: 5px;
-      background: #38bdf8;
+      height: 100%;
+      background: #f8d66d;
       width: 0;
     }}
   </style>
@@ -352,10 +434,20 @@ def write_html(plan: dict, assets: list[dict]) -> None:
   <div class="stage" id="stage">
     <img class="photo" id="photo" alt="">
     <div class="shade"></div>
-    <div class="brand" id="brand"></div>
-    <div class="caption" id="caption"></div>
-    <div class="meta" id="meta"></div>
-    <div class="progress" id="progress"></div>
+    <div class="topbar">
+      <div class="brand" id="brand"></div>
+      <div class="sceneNo" id="sceneNo"></div>
+    </div>
+    <div class="coverTitle" id="coverTitle"></div>
+    <div class="captionPanel">
+      <div class="caption" id="caption"></div>
+      <div class="meta">
+        <span id="meta"></span>
+        <span id="timecode"></span>
+      </div>
+    </div>
+    <div class="cta"><strong id="ctaMain"></strong><span id="platformTag"></span></div>
+    <div class="progressRail"><div class="progress" id="progress"></div></div>
   </div>
   <script>
     window.VIDEO_PAYLOAD = {json.dumps(payload, ensure_ascii=False)};
@@ -367,13 +459,23 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     const total = plan.duration_seconds;
     const photo = document.getElementById('photo');
     const brand = document.getElementById('brand');
+    const sceneNo = document.getElementById('sceneNo');
+    const coverTitle = document.getElementById('coverTitle');
     const caption = document.getElementById('caption');
     const meta = document.getElementById('meta');
+    const timecode = document.getElementById('timecode');
+    const ctaMain = document.getElementById('ctaMain');
+    const platformTag = document.getElementById('platformTag');
     const progress = document.getElementById('progress');
     let started = performance.now();
     let active = -1;
     brand.textContent = plan.shop_name + ' · ' + plan.industry;
     meta.textContent = plan.topic + ' / ' + plan.platform;
+    brand.textContent = plan.shop_name + ' · ' + plan.industry;
+    coverTitle.textContent = plan.cover_text;
+    meta.textContent = plan.topic;
+    ctaMain.textContent = '建议面诊咨询';
+    platformTag.textContent = plan.platform;
 
     function pickScene(t) {{
       let current = scenes[scenes.length - 1];
@@ -391,7 +493,9 @@ def write_html(plan: dict, assets: list[dict]) -> None:
         active = scene.order;
         photo.src = 'assets/' + scene.asset_file;
         caption.textContent = scene.caption;
-        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02)' : 'scale(1.14)';
+        sceneNo.textContent = String(scene.order).padStart(2, '0');
+        timecode.textContent = `${{scene.start}}-${{scene.start + scene.duration}}s`;
+        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02) translateY(-4px)' : 'scale(1.13) translateY(5px)';
       }}
       progress.style.width = ((elapsed / total) * 100).toFixed(2) + '%';
       if (elapsed < total) requestAnimationFrame(render);
@@ -450,30 +554,57 @@ def write_markdown(plan: dict, compliance: dict) -> None:
 
 def render_gif_preview(plan: dict, assets: list[dict]) -> None:
     frames = []
-    frame_duration_ms = 900
+    frame_duration_ms = 1100
     width, height = 360, 640
     for idx, scene in enumerate(plan["scenes"]):
         asset = assets[idx % len(assets)]["file"] if assets else ""
         img_path = ASSETS_DIR / asset
         base = Image.open(img_path).convert("RGB")
         base = crop_cover(base, width, height)
-        draw = ImageDraw.Draw(base)
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle((0, 0, width, 120), fill=(0, 0, 0, 72))
-        odraw.rectangle((0, 390, width, height), fill=(0, 0, 0, 150))
+        odraw.rectangle((0, 0, width, 150), fill=(7, 12, 20, 154))
+        odraw.rectangle((0, 350, width, height), fill=(7, 12, 20, 186))
+        odraw.ellipse((-50, -70, 170, 150), fill=(77, 132, 255, 48))
+        odraw.ellipse((230, 410, 470, 690), fill=(52, 211, 153, 36))
         base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(base)
         font_brand, font_caption, font_meta = load_fonts()
-        draw.text((22, 28), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
+        font_title = font_for_size(28)
+        font_caption = font_for_size(25)
+        font_meta = font_for_size(13)
+        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
+        draw.rounded_rectangle((292, 22, 340, 52), radius=15, fill=(248, 250, 252))
+        draw.text((306, 31), f"{idx + 1:02d}", fill=(15, 23, 42), font=font_meta)
+        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
+        draw.text((31, 31), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
         draw.multiline_text(
-            (22, 430),
-            wrap_by_pixel(scene["caption"], font_caption, 315),
+            (22, 86),
+            wrap_by_pixel(plan["cover_text"], font_title, 315),
+            fill=(255, 255, 255),
+            font=font_title,
+            spacing=6,
+            stroke_width=3,
+            stroke_fill=(8, 13, 20),
+        )
+        draw.rounded_rectangle((18, 408, 342, 562), radius=18, fill=(9, 14, 22), outline=(96, 112, 132), width=1)
+        draw.text((22, 28), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
+        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
+        draw.text((31, 31), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
+        draw.multiline_text(
+            (36, 428),
+            wrap_by_pixel(scene["caption"], font_caption, 288),
             fill=(255, 255, 255),
             font=font_caption,
-            spacing=8,
+            spacing=7,
+            stroke_width=2,
+            stroke_fill=(8, 13, 20),
         )
-        draw.text((22, 585), f"{scene['start']}-{scene['start'] + scene['duration']}s / {plan['platform']}", fill=(220, 232, 240), font=font_meta)
+        draw.text((22, 580), f"{scene['start']}-{scene['start'] + scene['duration']}s", fill=(220, 232, 240), font=font_meta)
+        draw.text((278, 580), plan["platform"], fill=(220, 232, 240), font=font_meta)
+        draw.rounded_rectangle((22, 610, 338, 615), radius=3, fill=(82, 91, 105))
+        progress_w = int(316 * ((idx + 1) / len(plan["scenes"])))
+        draw.rounded_rectangle((22, 610, 22 + progress_w, 615), radius=3, fill=(248, 214, 109))
         frames.append(base)
     if frames:
         frames[0].save(
@@ -509,6 +640,55 @@ def load_fonts():
         return font, font, font
 
 
+def font_for_size(size: int):
+    try:
+        return ImageFont.truetype("msyh.ttc", size)
+    except OSError:
+        return ImageFont.load_default()
+
+
+def make_placeholder_images(config: dict, count: int = 3) -> list[Path]:
+    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
+    cards = [
+        ("SHOP FRONT", config.get("shop_name", "Local Shop"), "First impression and location"),
+        ("SERVICE SPACE", config.get("industry", "Local Service"), "Clean environment and clear process"),
+        ("WHY VISIT", config.get("main_offer", "Core offer"), "Key message for first-time visitors"),
+    ]
+    palettes = [
+        ((17, 24, 39), (56, 189, 248), (248, 250, 252)),
+        ((20, 83, 45), (250, 204, 21), (240, 253, 244)),
+        ((88, 28, 135), (45, 212, 191), (250, 245, 255)),
+    ]
+    out = []
+    for idx in range(count):
+        path = IMAGE_DIR / f"demo_{idx + 1}.png"
+        bg, accent, panel = palettes[idx % len(palettes)]
+        label, title, subtitle = cards[idx % len(cards)]
+        img = Image.new("RGB", (1080, 1920), color=bg)
+        draw = ImageDraw.Draw(img)
+        font_label = font_for_size(42)
+        font_title = font_for_size(88)
+        font_subtitle = font_for_size(48)
+        font_small = font_for_size(34)
+
+        draw.rectangle((0, 0, 1080, 1920), fill=bg)
+        draw.ellipse((-220, -160, 520, 560), fill=tuple(min(255, c + 38) for c in bg))
+        draw.ellipse((680, 1180, 1320, 2020), fill=tuple(max(0, c - 18) for c in bg))
+        draw.rounded_rectangle((86, 190, 994, 1600), radius=58, fill=panel)
+        draw.rounded_rectangle((136, 250, 944, 1020), radius=42, fill=(232, 238, 245))
+        draw.rounded_rectangle((178, 300, 902, 970), radius=34, outline=accent, width=8)
+        for line in range(5):
+            y = 1110 + line * 70
+            draw.rounded_rectangle((154, y, 926 - line * 38, y + 26), radius=13, fill=(205, 213, 224))
+        draw.rounded_rectangle((136, 1350, 944, 1460), radius=32, fill=accent)
+        draw.text((158, 1390), label, fill=(15, 23, 42), font=font_label)
+        draw.text((150, 1060), wrap_text(title, 10), fill=(15, 23, 42), font=font_title, spacing=20)
+        draw.text((150, 1500), wrap_text(subtitle, 18), fill=(71, 85, 105), font=font_small, spacing=10)
+        img.save(path)
+        out.append(path)
+    return out
+
+
 def wrap_by_pixel(text: str, font, max_width: int) -> str:
     lines = []
     current = ""
@@ -532,6 +712,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Generate a local-business short-video workflow draft.")
     parser.add_argument("--config", default=str(ROOT / "config.json"))
     parser.add_argument("--demo-assets", action="store_true", help="Create placeholder images if no images exist.")
+    parser.add_argument("--refresh-demo-assets", action="store_true", help="Regenerate demo_*.png without touching real images.")
     parser.add_argument("--clean", action="store_true", help="Clear generated output before running.")
     args = parser.parse_args()
 
@@ -540,6 +721,10 @@ def main() -> None:
     ensure_dirs()
     config_path = Path(args.config)
     config = load_config(config_path)
+    if args.refresh_demo_assets:
+        for path in IMAGE_DIR.glob("demo_*.png"):
+            path.unlink()
+        make_placeholder_images(config)
     images = list_images()
     if not images and args.demo_assets:
         images = make_placeholder_images(config)

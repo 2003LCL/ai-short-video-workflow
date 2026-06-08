@@ -1,0 +1,29 @@
+.env
+.env.*
+!.env.example
+
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# Local customer/private material
+config.json
+input/customer_materials/
+input/private/
+
+# Generated runtime files that can become large
+output/recording/
+output/*.mp4
+output/*.webm
+output/*.wav
+output/*.mp3
+
+# Keep small demo artifacts for portfolio display
+!output/preview.gif
+!output/preview.html
+!output/video_plan.md
+!output/plan.json
+!output/captions.srt
+!output/voiceover.txt
+!output/voiceover_segments/

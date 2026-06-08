@@ -3,7 +3,9 @@
     "shop_name": "星河口腔",
     "industry": "口腔门诊",
     "topic": "第一次洗牙前要知道什么",
-    "platform": "douyin",
+    "platform": "generic",
+    "aspect_ratio": "9:16",
+    "visual_style": "clean_clinic",
     "duration_seconds": 24,
     "cover_text": "第一次洗牙前要知道什么",
     "titles": [

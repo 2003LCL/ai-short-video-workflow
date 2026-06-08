@@ -10,7 +10,8 @@ The workflow accepts a small amount of shop information plus 1-5 images, then ge
 - captions
 - voiceover text
 - a GIF preview
-- an HTML vertical-video preview
+- an HTML video preview
+- configurable aspect ratios and visual styles
 
 The core idea is simple: the AI should not manually operate a video editor. It should create a structured edit plan that rendering tools can execute.
 
@@ -85,6 +86,19 @@ input/images/
 
 One image is enough for the workflow to run. Three or more images usually produce a better preview.
 
+You can adjust the output canvas and style in `config.json`:
+
+```json
+{
+  "aspect_ratio": "9:16",
+  "visual_style": "clean_clinic"
+}
+```
+
+Supported aspect ratios: `9:16`, `16:9`, `1:1`.
+
+Supported visual styles: `clean_clinic`, `warm_local`, `bold_product`.
+
 ## Outputs
 
 - `output/video_plan.md`: human-readable topic, titles, scenes, publishing copy, and compliance result.
@@ -93,7 +107,7 @@ One image is enough for the workflow to run. Three or more images usually produc
 - `output/voiceover.txt`: full voiceover text.
 - `output/voiceover_segments/*.txt`: scene-level TTS input for CozyVoice.
 - `output/preview.gif`: lightweight visual preview.
-- `output/preview.html`: vertical-video HTML preview.
+- `output/preview.html`: configurable-aspect-ratio HTML preview.
 
 ## Current Capabilities
 
@@ -117,6 +131,7 @@ One image is enough for the workflow to run. Three or more images usually produc
 - [Architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [CozyVoice integration notes](docs/COSYVOICE.md)
+- [Style controls](docs/STYLE_CONTROLS.md)
 - [GitHub setup guide](docs/GITHUB_START.md)
 - [Security notes](SECURITY.md)
 

@@ -31,12 +31,39 @@ MEDICAL_RISK_TERMS = [
     "绝不复发",
 ]
 
+ASPECT_RATIOS = {
+    "9:16": (360, 640),
+    "16:9": (640, 360),
+    "1:1": (480, 480),
+}
+
+VISUAL_STYLES = {
+    "clean_clinic": {
+        "accent": "#f8d66d",
+        "shadow": "rgba(8,13,20,.88)",
+        "overlay": "rgba(7,12,20,.64)",
+        "text": "#ffffff",
+    },
+    "warm_local": {
+        "accent": "#f59e0b",
+        "shadow": "rgba(28,18,10,.86)",
+        "overlay": "rgba(33,22,12,.58)",
+        "text": "#fff7ed",
+    },
+    "bold_product": {
+        "accent": "#38bdf8",
+        "shadow": "rgba(8,13,20,.90)",
+        "overlay": "rgba(3,7,18,.62)",
+        "text": "#f8fafc",
+    },
+}
+
 
 def load_config(path: Path) -> dict:
     if not path.exists():
         raise FileNotFoundError(f"Config not found: {path}")
     try:
-        config = json.loads(path.read_text(encoding="utf-8"))
+        config = json.loads(path.read_text(encoding="utf-8-sig"))
     except json.JSONDecodeError as exc:
         raise ValueError(f"Invalid JSON in {path}: {exc}") from exc
     validate_config(config)
@@ -51,6 +78,54 @@ def validate_config(config: dict) -> None:
     duration = int(config.get("duration_seconds", 24))
     if duration < 15 or duration > 45:
         raise ValueError("duration_seconds should be between 15 and 45 for this POC.")
+    aspect_ratio = str(config.get("aspect_ratio", "9:16"))
+    if aspect_ratio not in ASPECT_RATIOS:
+        raise ValueError(f"aspect_ratio should be one of: {', '.join(ASPECT_RATIOS)}")
+    visual_style = str(config.get("visual_style", "clean_clinic"))
+    if visual_style not in VISUAL_STYLES:
+        raise ValueError(f"visual_style should be one of: {', '.join(VISUAL_STYLES)}")
+
+
+def get_canvas_size(plan_or_config: dict) -> tuple[int, int]:
+    aspect_ratio = str(plan_or_config.get("aspect_ratio", "9:16"))
+    return ASPECT_RATIOS.get(aspect_ratio, ASPECT_RATIOS["9:16"])
+
+
+def get_visual_style(plan_or_config: dict) -> dict:
+    visual_style = str(plan_or_config.get("visual_style", "clean_clinic"))
+    return VISUAL_STYLES.get(visual_style, VISUAL_STYLES["clean_clinic"])
+
+
+def get_layout(width: int, height: int) -> dict:
+    if width > height:
+        return {
+            "brand_top": 22,
+            "brand_left": 28,
+            "title_top": 62,
+            "title_font": 30,
+            "caption_bottom": 24,
+            "caption_font": 24,
+            "caption_width": width - 56,
+        }
+    if width == height:
+        return {
+            "brand_top": 24,
+            "brand_left": 24,
+            "title_top": 74,
+            "title_font": 31,
+            "caption_bottom": 34,
+            "caption_font": 25,
+            "caption_width": width - 48,
+        }
+    return {
+        "brand_top": 26,
+        "brand_left": 24,
+        "title_top": 82,
+        "title_font": 34,
+        "caption_bottom": 46,
+        "caption_font": 27,
+        "caption_width": width - 45,
+    }
 
 
 def ensure_dirs() -> None:
@@ -162,6 +237,8 @@ def generate_plan(config: dict, image_paths: list[Path]) -> dict:
         "industry": config.get("industry", "本地服务"),
         "topic": topic,
         "platform": config.get("platform", "douyin"),
+        "aspect_ratio": config.get("aspect_ratio", "9:16"),
+        "visual_style": config.get("visual_style", "clean_clinic"),
         "duration_seconds": sum(durations),
         "cover_text": make_cover_text(topic),
         "titles": make_titles(config),
@@ -274,6 +351,9 @@ def write_html(plan: dict, assets: list[dict]) -> None:
         "plan": plan,
         "scenes": scene_data,
     }
+    width, height = get_canvas_size(plan)
+    layout = get_layout(width, height)
+    style = get_visual_style(plan)
     html_doc = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -288,8 +368,8 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       font-family: "Microsoft YaHei", Arial, sans-serif;
     }}
     .stage {{
-      width: 360px;
-      height: 640px;
+      width: {width}px;
+      height: {height}px;
       position: relative;
       overflow: hidden;
       background: #0b1118;
@@ -316,9 +396,9 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     }}
     .topbar {{
       position: absolute;
-      top: 22px;
-      left: 20px;
-      right: 20px;
+      top: {layout["brand_top"]}px;
+      left: {layout["brand_left"]}px;
+      right: {layout["brand_left"]}px;
       z-index: 2;
       display: flex;
       align-items: center;
@@ -329,7 +409,7 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       min-width: 0;
       max-width: 300px;
       padding-left: 10px;
-      border-left: 4px solid #f8d66d;
+      border-left: 4px solid {style["accent"]};
       font-size: 13px;
       line-height: 1.12;
       font-weight: 700;
@@ -343,11 +423,11 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     }}
     .coverTitle {{
       position: absolute;
-      left: 22px;
-      right: 22px;
-      top: 74px;
+      left: {layout["brand_left"]}px;
+      right: {layout["brand_left"]}px;
+      top: {layout["title_top"]}px;
       z-index: 2;
-      font-size: 34px;
+      font-size: {layout["title_font"]}px;
       line-height: 1.12;
       font-weight: 900;
       letter-spacing: 0;
@@ -357,16 +437,16 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       position: absolute;
       left: 18px;
       right: 18px;
-      bottom: 46px;
+      bottom: {layout["caption_bottom"]}px;
       z-index: 2;
       padding: 18px 18px 17px;
       border-top: 1px solid rgba(255,255,255,.26);
       border-radius: 0;
-      background: linear-gradient(180deg, rgba(8,13,20,.78), rgba(8,13,20,.58));
+      background: linear-gradient(180deg, {style["shadow"]}, {style["overlay"]});
       box-shadow: 0 -18px 56px rgba(0,0,0,.25);
     }}
     .caption {{
-      font-size: 27px;
+      font-size: {layout["caption_font"]}px;
       line-height: 1.22;
       font-weight: 900;
       letter-spacing: 0;
@@ -610,6 +690,11 @@ def font_for_size(size: int):
         return ImageFont.load_default()
 
 
+def hex_to_rgb(value: str) -> tuple[int, int, int]:
+    value = value.strip().lstrip("#")
+    return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
+
+
 def make_placeholder_images(config: dict, count: int = 3) -> list[Path]:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     cards = [
@@ -674,7 +759,10 @@ def wrap_by_pixel(text: str, font, max_width: int) -> str:
 def render_gif_preview(plan: dict, assets: list[dict]) -> None:
     frames = []
     frame_duration_ms = 1200
-    width, height = 360, 640
+    width, height = get_canvas_size(plan)
+    layout = get_layout(width, height)
+    style = get_visual_style(plan)
+    accent = hex_to_rgb(style["accent"])
     for idx, scene in enumerate(plan["scenes"]):
         asset = assets[idx % len(assets)]["file"] if assets else ""
         img_path = ASSETS_DIR / asset
@@ -682,32 +770,36 @@ def render_gif_preview(plan: dict, assets: list[dict]) -> None:
 
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle((0, 0, width, 145), fill=(7, 12, 20, 122))
-        odraw.rectangle((0, 360, width, height), fill=(7, 12, 20, 178))
-        odraw.ellipse((-60, -80, 180, 160), fill=(77, 132, 255, 38))
-        odraw.ellipse((250, 430, 470, 700), fill=(52, 211, 153, 26))
+        odraw.rectangle((0, 0, width, int(height * 0.24)), fill=(7, 12, 20, 118))
+        odraw.rectangle((0, int(height * 0.58), width, height), fill=(7, 12, 20, 178))
+        odraw.ellipse((-60, -80, int(width * 0.55), int(height * 0.28)), fill=(*accent, 34))
+        odraw.ellipse((int(width * 0.70), int(height * 0.66), width + 110, height + 110), fill=(52, 211, 153, 24))
         base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(base)
 
         font_brand = font_for_size(15)
-        font_title = font_for_size(34)
-        font_caption = font_for_size(27)
+        font_title = font_for_size(layout["title_font"])
+        font_caption = font_for_size(layout["caption_font"])
 
-        draw.rectangle((24, 26, 28, 54), fill=(248, 214, 109))
-        draw.text((38, 28), f"{plan['shop_name']} / {plan['industry']}", fill=(255, 255, 255), font=font_brand)
+        brand_x = layout["brand_left"]
+        brand_y = layout["brand_top"]
+        draw.rectangle((brand_x, brand_y, brand_x + 4, brand_y + 28), fill=accent)
+        draw.text((brand_x + 14, brand_y + 2), f"{plan['shop_name']} / {plan['industry']}", fill=(255, 255, 255), font=font_brand)
         draw.multiline_text(
-            (22, 82),
-            wrap_by_pixel(plan["cover_text"], font_title, 315),
+            (layout["brand_left"], layout["title_top"]),
+            wrap_by_pixel(plan["cover_text"], font_title, layout["caption_width"]),
             fill=(255, 255, 255),
             font=font_title,
             spacing=6,
             stroke_width=3,
             stroke_fill=(8, 13, 20),
         )
-        draw.rectangle((22, 392, 338, 396), fill=(248, 214, 109))
+        caption_x = layout["brand_left"]
+        caption_y = height - layout["caption_bottom"] - 128
+        draw.rectangle((caption_x, caption_y - 18, width - layout["brand_left"], caption_y - 14), fill=accent)
         draw.multiline_text(
-            (22, 420),
-            wrap_by_pixel(scene["caption"], font_caption, 315),
+            (caption_x, caption_y),
+            wrap_by_pixel(scene["caption"], font_caption, layout["caption_width"]),
             fill=(255, 255, 255),
             font=font_caption,
             spacing=8,

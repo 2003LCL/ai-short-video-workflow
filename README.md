@@ -91,13 +91,13 @@ You can adjust the output canvas and style in `config.json`:
 ```json
 {
   "aspect_ratio": "9:16",
-  "visual_style": "clean_clinic"
+  "visual_style": "premium_luxe"
 }
 ```
 
 Supported aspect ratios: `9:16`, `16:9`, `1:1`.
 
-Supported visual styles: `clean_clinic`, `warm_local`, `bold_product`.
+Supported visual styles: `premium_luxe`, `clean_clinic`, `warm_local`, `bold_product`.
 
 ## Outputs
 

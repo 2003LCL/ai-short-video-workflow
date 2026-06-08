@@ -38,6 +38,12 @@ ASPECT_RATIOS = {
 }
 
 VISUAL_STYLES = {
+    "premium_luxe": {
+        "accent": "#d7bd7a",
+        "shadow": "rgba(7,8,10,.78)",
+        "overlay": "rgba(18,19,22,.50)",
+        "text": "#fbfaf7",
+    },
     "clean_clinic": {
         "accent": "#f8d66d",
         "shadow": "rgba(8,13,20,.88)",
@@ -81,7 +87,7 @@ def validate_config(config: dict) -> None:
     aspect_ratio = str(config.get("aspect_ratio", "9:16"))
     if aspect_ratio not in ASPECT_RATIOS:
         raise ValueError(f"aspect_ratio should be one of: {', '.join(ASPECT_RATIOS)}")
-    visual_style = str(config.get("visual_style", "clean_clinic"))
+    visual_style = str(config.get("visual_style", "premium_luxe"))
     if visual_style not in VISUAL_STYLES:
         raise ValueError(f"visual_style should be one of: {', '.join(VISUAL_STYLES)}")
 
@@ -92,8 +98,8 @@ def get_canvas_size(plan_or_config: dict) -> tuple[int, int]:
 
 
 def get_visual_style(plan_or_config: dict) -> dict:
-    visual_style = str(plan_or_config.get("visual_style", "clean_clinic"))
-    return VISUAL_STYLES.get(visual_style, VISUAL_STYLES["clean_clinic"])
+    visual_style = str(plan_or_config.get("visual_style", "premium_luxe"))
+    return VISUAL_STYLES.get(visual_style, VISUAL_STYLES["premium_luxe"])
 
 
 def get_layout(width: int, height: int) -> dict:
@@ -102,9 +108,9 @@ def get_layout(width: int, height: int) -> dict:
             "brand_top": 22,
             "brand_left": 28,
             "title_top": 62,
-            "title_font": 30,
+            "title_font": 24,
             "caption_bottom": 24,
-            "caption_font": 24,
+            "caption_font": 19,
             "caption_width": width - 56,
         }
     if width == height:
@@ -112,18 +118,18 @@ def get_layout(width: int, height: int) -> dict:
             "brand_top": 24,
             "brand_left": 24,
             "title_top": 74,
-            "title_font": 31,
+            "title_font": 25,
             "caption_bottom": 34,
-            "caption_font": 25,
+            "caption_font": 20,
             "caption_width": width - 48,
         }
     return {
         "brand_top": 26,
         "brand_left": 24,
         "title_top": 82,
-        "title_font": 34,
+        "title_font": 26,
         "caption_bottom": 46,
-        "caption_font": 27,
+        "caption_font": 21,
         "caption_width": width - 45,
     }
 
@@ -238,7 +244,7 @@ def generate_plan(config: dict, image_paths: list[Path]) -> dict:
         "topic": topic,
         "platform": config.get("platform", "douyin"),
         "aspect_ratio": config.get("aspect_ratio", "9:16"),
-        "visual_style": config.get("visual_style", "clean_clinic"),
+        "visual_style": config.get("visual_style", "premium_luxe"),
         "duration_seconds": sum(durations),
         "cover_text": make_cover_text(topic),
         "titles": make_titles(config),
@@ -429,9 +435,9 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       z-index: 2;
       font-size: {layout["title_font"]}px;
       line-height: 1.12;
-      font-weight: 900;
+      font-weight: 800;
       letter-spacing: 0;
-      text-shadow: 0 4px 20px rgba(0,0,0,.58);
+      text-shadow: 0 3px 16px rgba(0,0,0,.50);
     }}
     .captionPanel {{
       position: absolute;
@@ -439,7 +445,7 @@ def write_html(plan: dict, assets: list[dict]) -> None:
       right: 18px;
       bottom: {layout["caption_bottom"]}px;
       z-index: 2;
-      padding: 18px 18px 17px;
+      padding: 16px 18px 16px;
       border-top: 1px solid rgba(255,255,255,.26);
       border-radius: 0;
       background: linear-gradient(180deg, {style["shadow"]}, {style["overlay"]});
@@ -448,10 +454,10 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     .caption {{
       font-size: {layout["caption_font"]}px;
       line-height: 1.22;
-      font-weight: 900;
+      font-weight: 700;
       letter-spacing: 0;
       text-wrap: balance;
-      text-shadow: 0 2px 8px rgba(0,0,0,.32);
+      text-shadow: 0 2px 10px rgba(0,0,0,.42);
     }}
     .meta {{
       display: none;
@@ -697,41 +703,42 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
 
 def make_placeholder_images(config: dict, count: int = 3) -> list[Path]:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    cards = [
-        ("SHOP FRONT", config.get("shop_name", "Local Shop"), "First impression and location"),
-        ("SERVICE SPACE", config.get("industry", "Local Service"), "Clean environment and clear process"),
-        ("WHY VISIT", config.get("main_offer", "Core offer"), "Key message for first-time visitors"),
+    scenes = [
+        ("RECEPTION", config.get("shop_name", "Local Studio")),
+        ("DETAIL", config.get("industry", "Service Space")),
+        ("PROCESS", config.get("main_offer", "Clear Process")),
     ]
     palettes = [
-        ((17, 24, 39), (56, 189, 248), (248, 250, 252)),
-        ((20, 83, 45), (250, 204, 21), (240, 253, 244)),
-        ((88, 28, 135), (45, 212, 191), (250, 245, 255)),
+        ((21, 22, 24), (214, 189, 122), (238, 234, 224)),
+        ((34, 39, 36), (185, 166, 117), (231, 235, 229)),
+        ((28, 28, 33), (199, 177, 128), (236, 232, 222)),
     ]
     out = []
     for idx in range(count):
         path = IMAGE_DIR / f"demo_{idx + 1}.png"
-        bg, accent, panel = palettes[idx % len(palettes)]
-        label, title, subtitle = cards[idx % len(cards)]
+        bg, accent, surface = palettes[idx % len(palettes)]
+        label, title = scenes[idx % len(scenes)]
         img = Image.new("RGB", (1080, 1920), color=bg)
         draw = ImageDraw.Draw(img)
-        font_label = font_for_size(42)
-        font_title = font_for_size(88)
-        font_subtitle = font_for_size(48)
-        font_small = font_for_size(34)
+        font_label = font_for_size(34)
+        font_title = font_for_size(76)
 
-        draw.rectangle((0, 0, 1080, 1920), fill=bg)
-        draw.ellipse((-220, -160, 520, 560), fill=tuple(min(255, c + 38) for c in bg))
-        draw.ellipse((680, 1180, 1320, 2020), fill=tuple(max(0, c - 18) for c in bg))
-        draw.rounded_rectangle((86, 190, 994, 1600), radius=58, fill=panel)
-        draw.rounded_rectangle((136, 250, 944, 1020), radius=42, fill=(232, 238, 245))
-        draw.rounded_rectangle((178, 300, 902, 970), radius=34, outline=accent, width=8)
-        for line in range(5):
-            y = 1110 + line * 70
-            draw.rounded_rectangle((154, y, 926 - line * 38, y + 26), radius=13, fill=(205, 213, 224))
-        draw.rounded_rectangle((136, 1350, 944, 1460), radius=32, fill=accent)
-        draw.text((158, 1390), label, fill=(15, 23, 42), font=font_label)
-        draw.text((150, 1060), wrap_text(title, 10), fill=(15, 23, 42), font=font_title, spacing=20)
-        draw.text((150, 1500), wrap_text(subtitle, 18), fill=(71, 85, 105), font=font_small, spacing=10)
+        for y in range(1920):
+            shade = int(30 * (y / 1920))
+            color = tuple(min(255, c + shade) for c in bg)
+            draw.line((0, y, 1080, y), fill=color)
+
+        draw.ellipse((-180, -260, 620, 520), fill=tuple(min(255, c + 34) for c in bg))
+        draw.ellipse((580, 1160, 1380, 2140), fill=tuple(max(0, c - 12) for c in bg))
+        draw.rounded_rectangle((118, 300, 962, 1430), radius=72, fill=surface)
+        draw.rounded_rectangle((164, 360, 916, 1370), radius=54, outline=accent, width=5)
+        draw.rounded_rectangle((218, 470, 862, 920), radius=46, fill=(245, 242, 235))
+        draw.rectangle((218, 900, 862, 908), fill=accent)
+        draw.rounded_rectangle((248, 1010, 832, 1060), radius=25, fill=(206, 202, 192))
+        draw.rounded_rectangle((248, 1100, 740, 1142), radius=21, fill=(194, 190, 182))
+        draw.rounded_rectangle((248, 1190, 800, 1232), radius=21, fill=(218, 214, 204))
+        draw.text((160, 1518), label, fill=accent, font=font_label)
+        draw.text((160, 1580), wrap_text(title, 10), fill=(246, 242, 232), font=font_title, spacing=18)
         img.save(path)
         out.append(path)
     return out
@@ -770,10 +777,10 @@ def render_gif_preview(plan: dict, assets: list[dict]) -> None:
 
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
         odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle((0, 0, width, int(height * 0.24)), fill=(7, 12, 20, 118))
-        odraw.rectangle((0, int(height * 0.58), width, height), fill=(7, 12, 20, 178))
-        odraw.ellipse((-60, -80, int(width * 0.55), int(height * 0.28)), fill=(*accent, 34))
-        odraw.ellipse((int(width * 0.70), int(height * 0.66), width + 110, height + 110), fill=(52, 211, 153, 24))
+        odraw.rectangle((0, 0, width, int(height * 0.26)), fill=(7, 8, 10, 112))
+        odraw.rectangle((0, int(height * 0.60), width, height), fill=(7, 8, 10, 188))
+        odraw.ellipse((-70, -90, int(width * 0.56), int(height * 0.28)), fill=(*accent, 24))
+        odraw.ellipse((int(width * 0.70), int(height * 0.67), width + 120, height + 120), fill=(255, 255, 255, 18))
         base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
         draw = ImageDraw.Draw(base)
 
@@ -791,19 +798,19 @@ def render_gif_preview(plan: dict, assets: list[dict]) -> None:
             fill=(255, 255, 255),
             font=font_title,
             spacing=6,
-            stroke_width=3,
+            stroke_width=1,
             stroke_fill=(8, 13, 20),
         )
         caption_x = layout["brand_left"]
         caption_y = height - layout["caption_bottom"] - 128
-        draw.rectangle((caption_x, caption_y - 18, width - layout["brand_left"], caption_y - 14), fill=accent)
+        draw.rectangle((caption_x, caption_y - 22, width - layout["brand_left"], caption_y - 19), fill=accent)
         draw.multiline_text(
             (caption_x, caption_y),
             wrap_by_pixel(scene["caption"], font_caption, layout["caption_width"]),
             fill=(255, 255, 255),
             font=font_caption,
             spacing=8,
-            stroke_width=2,
+            stroke_width=0,
             stroke_fill=(8, 13, 20),
         )
         frames.append(base)

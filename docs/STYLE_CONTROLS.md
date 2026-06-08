@@ -28,12 +28,13 @@ Supported values:
 
 ```json
 {
-  "visual_style": "clean_clinic"
+  "visual_style": "premium_luxe"
 }
 ```
 
 Options:
 
+- `premium_luxe`: refined, restrained, high-end visual direction
 - `clean_clinic`: restrained, professional, suitable for clinic and service businesses
 - `warm_local`: warmer local-business feel
 - `bold_product`: stronger contrast, suitable for product/service promotion

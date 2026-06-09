@@ -5,115 +5,151 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>星河口腔 - AI 视频预览</title>
   <style>
+    :root {
+      --accent: #d7bd7a;
+      --pad: 24px;
+    }
+    * { box-sizing: border-box; }
     html, body {
       margin: 0;
-      background: #111827;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 50% 30%, #1b2433, #0a0d14 70%);
       color: #fff;
-      font-family: "Microsoft YaHei", Arial, sans-serif;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
     }
     .stage {
       width: 360px;
       height: 640px;
       position: relative;
       overflow: hidden;
+      border-radius: 18px;
       background: #0b1118;
       isolation: isolate;
+      box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
     }
     .photo {
       position: absolute;
-      inset: -18px;
-      width: calc(100% + 36px);
-      height: calc(100% + 36px);
+      inset: -10%;
+      width: 120%;
+      height: 120%;
       object-fit: cover;
-      transform: scale(1.04);
-      transition: transform 1200ms ease, filter 500ms ease;
-      filter: saturate(1.08) contrast(1.04) brightness(.92);
+      transform: scale(1.06);
+      transition: transform 4200ms cubic-bezier(.22,.61,.36,1), filter 600ms ease;
+      filter: saturate(1.06) contrast(1.04) brightness(.94);
     }
     .shade {
       position: absolute;
       inset: 0;
       z-index: 1;
+      pointer-events: none;
       background:
-        linear-gradient(180deg, rgba(8,14,22,.68), rgba(8,14,22,.10) 34%, rgba(8,14,22,.08) 58%, rgba(8,14,22,.88)),
-        radial-gradient(circle at 24% 18%, rgba(86,142,255,.18), transparent 34%),
-        radial-gradient(circle at 76% 72%, rgba(54,211,153,.12), transparent 30%);
+        linear-gradient(180deg, rgba(6,8,12,.72), rgba(6,8,12,.06) 30%, rgba(6,8,12,.10) 56%, rgba(6,8,12,.90)),
+        radial-gradient(circle at 18% 12%, rgba(120,150,235,.16), transparent 42%);
+    }
+    .segs {
+      position: absolute;
+      top: 12px;
+      left: var(--pad);
+      right: var(--pad);
+      z-index: 3;
+      display: flex;
+      gap: 4px;
+    }
+    .seg {
+      flex: 1;
+      height: 3px;
+      border-radius: 3px;
+      background: rgba(255,255,255,.22);
+      overflow: hidden;
+    }
+    .seg > i {
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--accent);
+      border-radius: 3px;
     }
     .topbar {
       position: absolute;
-      top: 26px;
-      left: 24px;
-      right: 24px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 10px;
+      top: 32px;
+      left: var(--pad);
+      right: var(--pad);
+      z-index: 3;
     }
     .brand {
-      min-width: 0;
-      max-width: 300px;
+      display: inline-block;
+      max-width: 100%;
       padding-left: 10px;
-      border-left: 4px solid #d7bd7a;
+      border-left: 4px solid var(--accent);
       font-size: 13px;
-      line-height: 1.12;
+      line-height: 1.15;
       font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      text-shadow: 0 2px 12px rgba(0,0,0,.45);
-    }
-    .sceneNo {
-      display: none;
+      text-shadow: 0 2px 12px rgba(0,0,0,.6);
     }
     .coverTitle {
       position: absolute;
-      left: 24px;
-      right: 24px;
+      left: var(--pad);
+      right: var(--pad);
       top: 82px;
-      z-index: 2;
+      z-index: 3;
       font-size: 26px;
-      line-height: 1.12;
+      line-height: 1.16;
       font-weight: 800;
-      letter-spacing: 0;
-      text-shadow: 0 3px 16px rgba(0,0,0,.50);
+      text-shadow: 0 3px 18px rgba(0,0,0,.6);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 700ms ease, transform 700ms ease;
     }
+    .coverTitle.show { opacity: 1; transform: translateY(0); }
     .captionPanel {
       position: absolute;
-      left: 18px;
-      right: 18px;
+      left: var(--pad);
+      right: var(--pad);
       bottom: 46px;
-      z-index: 2;
-      padding: 16px 18px 16px;
-      border-top: 1px solid rgba(255,255,255,.26);
-      border-radius: 0;
-      background: linear-gradient(180deg, rgba(7,8,10,.78), rgba(18,19,22,.50));
-      box-shadow: 0 -18px 56px rgba(0,0,0,.25);
+      z-index: 3;
+      display: flex;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(12,14,20,.62), rgba(8,10,16,.78));
+      backdrop-filter: blur(6px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.4);
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 420ms ease, transform 420ms ease;
+    }
+    .captionPanel.show { opacity: 1; transform: translateY(0); }
+    .captionPanel::before {
+      content: "";
+      flex: 0 0 4px;
+      border-radius: 3px;
+      background: var(--accent);
     }
     .caption {
       font-size: 21px;
-      line-height: 1.22;
+      line-height: 1.32;
       font-weight: 700;
-      letter-spacing: 0;
       text-wrap: balance;
-      text-shadow: 0 2px 10px rgba(0,0,0,.42);
+      text-shadow: 0 2px 10px rgba(0,0,0,.5);
     }
     .meta {
-      display: none;
-    }
-    .cta {
-      display: none;
-    }
-    .cta strong {
-      color: #fff;
-      font-size: 13px;
-    }
-    .progressRail {
-      display: none;
-    }
-    .progress {
-      height: 100%;
-      background: #f8d66d;
-      width: 0;
+      position: absolute;
+      left: var(--pad);
+      right: var(--pad);
+      bottom: calc(46px + 4px);
+      z-index: 3;
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: rgba(225,230,240,.9);
+      text-shadow: 0 1px 6px rgba(0,0,0,.6);
+      transform: translateY(-100%);
+      padding-bottom: 8px;
     }
   </style>
 </head>
@@ -121,23 +157,14 @@
   <div class="stage" id="stage">
     <img class="photo" id="photo" alt="">
     <div class="shade"></div>
-    <div class="topbar">
-      <div class="brand" id="brand"></div>
-      <div class="sceneNo" id="sceneNo"></div>
-    </div>
+    <div class="segs" id="segs"></div>
+    <div class="topbar"><span class="brand" id="brand"></span></div>
     <div class="coverTitle" id="coverTitle"></div>
-    <div class="captionPanel">
-      <div class="caption" id="caption"></div>
-      <div class="meta">
-        <span id="meta"></span>
-        <span id="timecode"></span>
-      </div>
-    </div>
-    <div class="cta"><strong id="ctaMain"></strong><span id="platformTag"></span></div>
-    <div class="progressRail"><div class="progress" id="progress"></div></div>
+    <div class="meta"><span id="timecode"></span><span id="platformTag"></span></div>
+    <div class="captionPanel" id="captionPanel"><div class="caption" id="caption"></div></div>
   </div>
   <script>
-    window.VIDEO_PAYLOAD = {"plan": {"shop_name": "星河口腔", "industry": "口腔门诊", "topic": "第一次洗牙前要知道什么", "platform": "generic", "aspect_ratio": "9:16", "visual_style": "premium_luxe", "duration_seconds": 24, "cover_text": "第一次洗牙前要知道什么", "titles": ["本地社区想了解第一次洗牙前要知道什么，先看这条", "第一次来星河口腔前，可以先看这几点", "第一次洗牙前要知道什么别急着决定，先把流程问清楚", "给第一次了解口腔门诊的人一点参考", "星河口腔服务流程简单介绍"], "post_copy": "第一次洗牙前要知道什么简单整理了一版，适合第一次了解的朋友先做参考。具体情况建议结合自身需求，到正规机构当面咨询。", "scenes": [{"order": 1, "start": 0, "duration": 8, "asset": "demo_1.png", "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "effect": "slow_zoom_in"}, {"order": 2, "start": 8, "duration": 8, "asset": "demo_2.png", "asset_type": "环境/服务图", "caption": "到星河口腔前，建议先了解环境、流程和沟通方式。", "voiceover": "到星河口腔前，建议先了解环境、流程和沟通方式。", "effect": "pan_up"}, {"order": 3, "start": 16, "duration": 8, "asset": "demo_3.png", "asset_type": "核心卖点图", "caption": "这里重点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里重点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut"}], "subtitle_style": "white_text_with_dark_shadow", "bgm_style": "clean_light"}, "scenes": [{"order": 1, "start": 0, "duration": 8, "asset": "demo_1.png", "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个点。", "effect": "slow_zoom_in", "asset_file": "image_1.png"}, {"order": 2, "start": 8, "duration": 8, "asset": "demo_2.png", "asset_type": "环境/服务图", "caption": "到星河口腔前，建议先了解环境、流程和沟通方式。", "voiceover": "到星河口腔前，建议先了解环境、流程和沟通方式。", "effect": "pan_up", "asset_file": "image_2.png"}, {"order": 3, "start": 16, "duration": 8, "asset": "demo_3.png", "asset_type": "核心卖点图", "caption": "这里重点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里重点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut", "asset_file": "image_3.png"}]};
+    window.VIDEO_PAYLOAD = {"plan": {"shop_name": "星河口腔", "industry": "口腔门诊", "topic": "第一次洗牙前要知道什么", "platform": "generic", "aspect_ratio": "9:16", "visual_style": "premium_luxe", "duration_seconds": 24, "cover_text": "第一次洗牙前要知道什么", "titles": ["本地社区想了解第一次洗牙前要知道什么，先看这条", "第一次来星河口腔前，可以先看这几点", "第一次洗牙前要知道什么别急着决定，先把流程问清楚", "给第一次了解口腔门诊的人一点参考", "星河口腔服务流程简单介绍"], "post_copy": "第一次洗牙前要知道什么整理了一版，适合第一次了解的朋友先做参考。具体情况建议结合自身需求，到正规机构当面咨询。", "scenes": [{"order": 1, "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个重点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个重点。", "effect": "slow_zoom_in", "edited": false, "start": 0, "duration": 8}, {"order": 2, "asset_type": "环境/服务图", "caption": "如果你是第一次准备洗牙、担心流程不清楚的用户，最需要先确认环境、流程和沟通方式。", "voiceover": "如果你是第一次准备洗牙、担心流程不清楚的用户，最需要先确认环境、流程和沟通方式。", "effect": "pan_up", "edited": false, "start": 8, "duration": 8}, {"order": 3, "asset_type": "核心卖点图", "caption": "这里的核心卖点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里的核心卖点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut", "edited": false, "start": 16, "duration": 8}], "subtitle_style": "premium_readable", "bgm_style": "克制、干净、轻奢感的低速背景音乐"}, "scenes": [{"order": 1, "asset_type": "门店/封面图", "caption": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个重点。", "voiceover": "本地社区想了解第一次洗牙前要知道什么，可以先看这几个重点。", "effect": "slow_zoom_in", "edited": false, "start": 0, "duration": 8, "asset_file": "image_1.png"}, {"order": 2, "asset_type": "环境/服务图", "caption": "如果你是第一次准备洗牙、担心流程不清楚的用户，最需要先确认环境、流程和沟通方式。", "voiceover": "如果你是第一次准备洗牙、担心流程不清楚的用户，最需要先确认环境、流程和沟通方式。", "effect": "pan_up", "edited": false, "start": 8, "duration": 8, "asset_file": "image_2.png"}, {"order": 3, "asset_type": "核心卖点图", "caption": "这里的核心卖点是：洗牙前会先做基础检查和流程沟通。", "voiceover": "这里的核心卖点是：洗牙前会先做基础检查和流程沟通。", "effect": "cut", "edited": false, "start": 16, "duration": 8, "asset_file": "image_3.png"}]};
   </script>
   <script>
     const payload = window.VIDEO_PAYLOAD;
@@ -146,45 +173,70 @@
     const total = plan.duration_seconds;
     const photo = document.getElementById('photo');
     const brand = document.getElementById('brand');
-    const sceneNo = document.getElementById('sceneNo');
     const coverTitle = document.getElementById('coverTitle');
     const caption = document.getElementById('caption');
-    const meta = document.getElementById('meta');
+    const captionPanel = document.getElementById('captionPanel');
     const timecode = document.getElementById('timecode');
-    const ctaMain = document.getElementById('ctaMain');
     const platformTag = document.getElementById('platformTag');
-    const progress = document.getElementById('progress');
-    let started = performance.now();
-    let active = -1;
-    brand.textContent = plan.shop_name + ' · ' + plan.industry;
-    meta.textContent = plan.topic + ' / ' + plan.platform;
+    const segs = document.getElementById('segs');
+
     brand.textContent = plan.shop_name + ' · ' + plan.industry;
     coverTitle.textContent = plan.cover_text;
-    meta.textContent = plan.topic;
-    ctaMain.textContent = '建议面诊咨询';
     platformTag.textContent = plan.platform;
 
-    function pickScene(t) {
-      let current = scenes[scenes.length - 1];
-      for (const scene of scenes) {
-        if (t >= scene.start && t < scene.start + scene.duration) current = scene;
+    // 分段进度条：每个场景一段
+    const bars = scenes.map(() => {
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      const fill = document.createElement('i');
+      seg.appendChild(fill);
+      segs.appendChild(seg);
+      return fill;
+    });
+
+    let started = performance.now();
+    let active = -1;
+
+    function pickIndex(t) {
+      let idx = scenes.length - 1;
+      for (let i = 0; i < scenes.length; i++) {
+        if (t >= scenes[i].start && t < scenes[i].start + scenes[i].duration) { idx = i; break; }
       }
-      return current;
+      return idx;
     }
 
     function render() {
       const elapsed = (performance.now() - started) / 1000;
       const t = Math.min(elapsed, total - 0.01);
-      const scene = pickScene(t);
-      if (scene.order !== active) {
-        active = scene.order;
+      const idx = pickIndex(t);
+      const scene = scenes[idx];
+      if (idx !== active) {
+        active = idx;
         photo.src = 'assets/' + scene.asset_file;
+        // 重置再触发运镜，形成缓动 Ken Burns
+        const out = String(scene.effect).includes('out');
+        photo.style.transition = 'none';
+        photo.style.transform = out ? 'scale(1.14) translateY(6px)' : 'scale(1.04) translateY(-4px)';
+        void photo.offsetWidth;
+        photo.style.transition = 'transform 4200ms cubic-bezier(.22,.61,.36,1), filter 600ms ease';
+        requestAnimationFrame(() => {
+          photo.style.transform = out ? 'scale(1.04) translateY(-4px)' : 'scale(1.14) translateY(6px)';
+        });
+        // 字幕换场动画
         caption.textContent = scene.caption;
-        sceneNo.textContent = String(scene.order).padStart(2, '0');
-        timecode.textContent = `${scene.start}-${scene.start + scene.duration}s`;
-        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02) translateY(-4px)' : 'scale(1.13) translateY(5px)';
+        timecode.textContent = scene.start + '-' + (scene.start + scene.duration) + 's';
+        captionPanel.classList.remove('show');
+        void captionPanel.offsetWidth;
+        captionPanel.classList.add('show');
+        coverTitle.classList.toggle('show', idx === 0);
       }
-      progress.style.width = ((elapsed / total) * 100).toFixed(2) + '%';
+      // 进度条逐段填充
+      bars.forEach((b, i) => {
+        let r = 0;
+        if (i < idx) r = 1;
+        else if (i === idx) r = Math.min(1, (t - scene.start) / scene.duration);
+        b.style.width = (r * 100).toFixed(1) + '%';
+      });
       if (elapsed < total) requestAnimationFrame(render);
       else window.__VIDEO_DONE__ = true;
     }

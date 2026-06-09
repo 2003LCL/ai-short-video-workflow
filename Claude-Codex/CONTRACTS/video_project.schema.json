@@ -1,0 +1,167 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "video_project.schema.json",
+  "title": "VideoProject",
+  "description": "短视频生成平台的核心数据契约 v1。整个系统所有模块围绕它读写：分析层产出 analysis，生成层产出 script+scenes+titles，渲染层消费 scenes，审核层修改 scenes 并标记 edited。向后兼容现有 plan.json（plan 字段下的内容）。",
+  "type": "object",
+  "required": ["schema_version", "project_id", "input", "config"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "const": "1.0",
+      "description": "契约版本。改结构必须升版本并记入 DECISIONS.md。"
+    },
+    "project_id": {
+      "type": "string",
+      "description": "一条视频项目的唯一 id（一个客户的一次任务）。"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "analyzing", "generated", "rendering", "review", "ready", "published", "failed"],
+      "description": "项目当前所处阶段，驱动流水线编排与断点重跑。"
+    },
+
+    "input": {
+      "type": "object",
+      "description": "客户提供的原始输入。生成层只读，不修改。",
+      "required": ["shop"],
+      "properties": {
+        "shop": {
+          "type": "object",
+          "required": ["shop_name", "industry"],
+          "properties": {
+            "shop_name": {"type": "string"},
+            "industry": {"type": "string", "description": "行业，用于挑模板和合规模式"},
+            "city_area": {"type": "string"},
+            "topic": {"type": "string", "description": "可选；为空时由分析层提议选题"},
+            "main_offer": {"type": "string"},
+            "target_customer": {"type": "string"},
+            "tone": {"type": "string", "description": "期望语气，如 专业/亲切/活泼"},
+            "cta": {"type": "string"}
+          }
+        },
+        "sources": {
+          "type": "array",
+          "description": "多模态输入源：链接/文章/录音/素材文件。分析层从这里提炼信息。",
+          "items": {
+            "type": "object",
+            "required": ["type", "ref"],
+            "properties": {
+              "type": {"type": "string", "enum": ["url", "article", "audio", "image", "video", "text"]},
+              "ref": {"type": "string", "description": "文件路径或 URL"},
+              "extracted_text": {"type": "string", "description": "抓取/转写后的文本，由输入处理模块回填"}
+            }
+          }
+        },
+        "assets": {
+          "type": "array",
+          "description": "客户上传的可用镜头素材（图片/视频片段）。渲染层从这里取镜头。",
+          "items": {
+            "type": "object",
+            "required": ["asset_id", "file", "kind"],
+            "properties": {
+              "asset_id": {"type": "string"},
+              "file": {"type": "string"},
+              "kind": {"type": "string", "enum": ["image", "video"]},
+              "duration": {"type": "number", "description": "视频素材时长(秒)，图片为 null"},
+              "tags": {"type": "array", "items": {"type": "string"}, "description": "视觉模型打的内容标签，供素材匹配用（M4）"}
+            }
+          }
+        }
+      }
+    },
+
+    "config": {
+      "type": "object",
+      "description": "输出配置，对应现有 config.json。",
+      "required": ["aspect_ratio", "visual_style", "duration_seconds"],
+      "properties": {
+        "aspect_ratio": {"type": "string", "enum": ["9:16", "16:9", "1:1"]},
+        "visual_style": {"type": "string", "enum": ["premium_luxe", "clean_clinic", "warm_local", "bold_product"]},
+        "duration_seconds": {"type": "integer", "minimum": 15, "maximum": 45},
+        "platform": {"type": "string", "description": "目标平台，影响版本派生"},
+        "compliance_mode": {"type": "string", "enum": ["", "medical"], "description": "医疗模式触发风险词强校验"}
+      }
+    },
+
+    "analysis": {
+      "type": "object",
+      "description": "【M1·分析层产出】LLM 对输入的理解。这是「分析」环节的结构化结果。",
+      "properties": {
+        "selling_points": {"type": "array", "items": {"type": "string"}, "description": "提炼出的卖点"},
+        "pain_points": {"type": "array", "items": {"type": "string"}, "description": "用户痛点"},
+        "hook_angles": {"type": "array", "items": {"type": "string"}, "description": "爆款角度/切入点候选"},
+        "recommended_structure": {"type": "string", "description": "推荐的短视频结构，如 痛点-方案-信任-引导"},
+        "reasoning": {"type": "string", "description": "为什么选这个角度，便于人工品控理解 AI 思路"}
+      }
+    },
+
+    "script": {
+      "type": "object",
+      "description": "【M1·生成层产出】成片级文案。",
+      "properties": {
+        "topic": {"type": "string"},
+        "cover_text": {"type": "string", "description": "封面主文案"},
+        "titles": {"type": "array", "items": {"type": "string"}, "description": "标题备选"},
+        "post_copy": {"type": "string", "description": "发布文案"},
+        "bgm_suggestion": {"type": "string", "description": "BGM 风格建议"}
+      }
+    },
+
+    "scenes": {
+      "type": "array",
+      "description": "【生成层产出 / 渲染层消费 / 审核层修改】分镜。系统的核心可编辑单元。",
+      "items": {
+        "type": "object",
+        "required": ["order", "start", "duration", "caption", "voiceover", "effect"],
+        "properties": {
+          "order": {"type": "integer"},
+          "start": {"type": "integer", "description": "起始秒"},
+          "duration": {"type": "integer", "description": "时长秒"},
+          "asset_id": {"type": "string", "description": "引用 input.assets 里的素材；M4 自动匹配，审核可手动替换"},
+          "asset_type": {"type": "string", "description": "这一镜需要的素材类型描述（匹配前的语义需求）"},
+          "caption": {"type": "string", "description": "字幕"},
+          "voiceover": {"type": "string", "description": "口播稿"},
+          "effect": {"type": "string", "description": "运镜效果，如 slow_zoom_in/pan_up/cut"},
+          "edited": {"type": "boolean", "description": "审核层标记：人工是否改过这镜。增量重渲染只重跑 edited=true 的镜。"}
+        }
+      }
+    },
+
+    "compliance": {
+      "type": "object",
+      "description": "合规检查结果。",
+      "properties": {
+        "pass": {"type": "boolean"},
+        "risk_level": {"type": "string", "enum": ["low", "medium", "high"]},
+        "issues": {"type": "array", "items": {"type": "string"}},
+        "note": {"type": "string"}
+      }
+    },
+
+    "renders": {
+      "type": "array",
+      "description": "【渲染层产出】各平台版本的成品/预览产物路径。",
+      "items": {
+        "type": "object",
+        "properties": {
+          "platform": {"type": "string", "description": "douyin/xiaohongshu/bilibili/youtube_shorts"},
+          "aspect_ratio": {"type": "string"},
+          "kind": {"type": "string", "enum": ["preview_html", "preview_gif", "mp4"]},
+          "file": {"type": "string"},
+          "rendered_at": {"type": "string", "description": "渲染时间戳"}
+        }
+      }
+    },
+
+    "metrics": {
+      "type": "object",
+      "description": "【M7·数据回流】发布后回填，用于下次选题优化。",
+      "properties": {
+        "views": {"type": "integer"},
+        "completion_rate": {"type": "number"},
+        "conversions": {"type": "integer"}
+      }
+    }
+  }
+}

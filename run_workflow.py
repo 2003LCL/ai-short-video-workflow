@@ -5,7 +5,9 @@ import math
 import shutil
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
+
+from llm_generate import LLMGenerationError, build_project_input, generate_video_content, legacy_plan_from_generation
 
 
 ROOT = Path(__file__).resolve().parent
@@ -142,40 +144,6 @@ def ensure_dirs() -> None:
 def list_images() -> list[Path]:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
     return sorted(p for p in IMAGE_DIR.iterdir() if p.suffix.lower() in IMAGE_EXTS)
-
-
-def make_placeholder_images(config: dict, count: int = 3) -> list[Path]:
-    IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    labels = [
-        ("门店外观", config.get("shop_name", "门店")),
-        ("服务环境", config.get("industry", "本地服务")),
-        ("流程说明", config.get("main_offer", "核心卖点")),
-    ]
-    out = []
-    for idx in range(count):
-        path = IMAGE_DIR / f"demo_{idx + 1}.png"
-        if path.exists():
-            out.append(path)
-            continue
-        img = Image.new("RGB", (1080, 1920), color=(24 + idx * 18, 34 + idx * 24, 46 + idx * 18))
-        draw = ImageDraw.Draw(img)
-        try:
-            font_big = ImageFont.truetype("msyh.ttc", 92)
-            font_mid = ImageFont.truetype("msyh.ttc", 58)
-            font_small = ImageFont.truetype("msyh.ttc", 38)
-        except OSError:
-            font_big = ImageFont.load_default()
-            font_mid = ImageFont.load_default()
-            font_small = ImageFont.load_default()
-        title, subtitle = labels[idx % len(labels)]
-        draw.rounded_rectangle((88, 190, 992, 1650), radius=42, fill=(245, 248, 250))
-        draw.text((140, 290), title, fill=(23, 31, 42), font=font_big)
-        draw.text((140, 430), wrap_text(subtitle, 12), fill=(55, 70, 84), font=font_mid, spacing=22)
-        draw.line((140, 1420, 940, 1420), fill=(67, 111, 165), width=8)
-        draw.text((140, 1480), "示例素材，可替换为真实照片", fill=(86, 96, 106), font=font_small)
-        img.save(path)
-        out.append(path)
-    return out
 
 
 def wrap_text(text: str, max_chars: int) -> str:
@@ -360,6 +328,7 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     width, height = get_canvas_size(plan)
     layout = get_layout(width, height)
     style = get_visual_style(plan)
+    accent = style["accent"]
     html_doc = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -367,115 +336,151 @@ def write_html(plan: dict, assets: list[dict]) -> None:
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{html.escape(plan["shop_name"])} - AI 视频预览</title>
   <style>
+    :root {{
+      --accent: {accent};
+      --pad: {layout["brand_left"]}px;
+    }}
+    * {{ box-sizing: border-box; }}
     html, body {{
       margin: 0;
-      background: #111827;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 50% 30%, #1b2433, #0a0d14 70%);
       color: #fff;
-      font-family: "Microsoft YaHei", Arial, sans-serif;
+      font-family: "Microsoft YaHei", "PingFang SC", Arial, sans-serif;
     }}
     .stage {{
       width: {width}px;
       height: {height}px;
       position: relative;
       overflow: hidden;
+      border-radius: 18px;
       background: #0b1118;
       isolation: isolate;
+      box-shadow: 0 30px 80px rgba(0,0,0,.55), 0 0 0 1px rgba(255,255,255,.04);
     }}
     .photo {{
       position: absolute;
-      inset: -18px;
-      width: calc(100% + 36px);
-      height: calc(100% + 36px);
+      inset: -10%;
+      width: 120%;
+      height: 120%;
       object-fit: cover;
-      transform: scale(1.04);
-      transition: transform 1200ms ease, filter 500ms ease;
-      filter: saturate(1.08) contrast(1.04) brightness(.92);
+      transform: scale(1.06);
+      transition: transform 4200ms cubic-bezier(.22,.61,.36,1), filter 600ms ease;
+      filter: saturate(1.06) contrast(1.04) brightness(.94);
     }}
     .shade {{
       position: absolute;
       inset: 0;
       z-index: 1;
+      pointer-events: none;
       background:
-        linear-gradient(180deg, rgba(8,14,22,.68), rgba(8,14,22,.10) 34%, rgba(8,14,22,.08) 58%, rgba(8,14,22,.88)),
-        radial-gradient(circle at 24% 18%, rgba(86,142,255,.18), transparent 34%),
-        radial-gradient(circle at 76% 72%, rgba(54,211,153,.12), transparent 30%);
+        linear-gradient(180deg, rgba(6,8,12,.72), rgba(6,8,12,.06) 30%, rgba(6,8,12,.10) 56%, rgba(6,8,12,.90)),
+        radial-gradient(circle at 18% 12%, rgba(120,150,235,.16), transparent 42%);
+    }}
+    .segs {{
+      position: absolute;
+      top: {max(10, layout["brand_top"] - 14)}px;
+      left: var(--pad);
+      right: var(--pad);
+      z-index: 3;
+      display: flex;
+      gap: 4px;
+    }}
+    .seg {{
+      flex: 1;
+      height: 3px;
+      border-radius: 3px;
+      background: rgba(255,255,255,.22);
+      overflow: hidden;
+    }}
+    .seg > i {{
+      display: block;
+      height: 100%;
+      width: 0;
+      background: var(--accent);
+      border-radius: 3px;
     }}
     .topbar {{
       position: absolute;
-      top: {layout["brand_top"]}px;
-      left: {layout["brand_left"]}px;
-      right: {layout["brand_left"]}px;
-      z-index: 2;
-      display: flex;
-      align-items: center;
-      justify-content: flex-start;
-      gap: 10px;
+      top: {layout["brand_top"] + 6}px;
+      left: var(--pad);
+      right: var(--pad);
+      z-index: 3;
     }}
     .brand {{
-      min-width: 0;
-      max-width: 300px;
+      display: inline-block;
+      max-width: 100%;
       padding-left: 10px;
-      border-left: 4px solid {style["accent"]};
+      border-left: 4px solid var(--accent);
       font-size: 13px;
-      line-height: 1.12;
+      line-height: 1.15;
       font-weight: 700;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      text-shadow: 0 2px 12px rgba(0,0,0,.45);
-    }}
-    .sceneNo {{
-      display: none;
+      text-shadow: 0 2px 12px rgba(0,0,0,.6);
     }}
     .coverTitle {{
       position: absolute;
-      left: {layout["brand_left"]}px;
-      right: {layout["brand_left"]}px;
+      left: var(--pad);
+      right: var(--pad);
       top: {layout["title_top"]}px;
-      z-index: 2;
+      z-index: 3;
       font-size: {layout["title_font"]}px;
-      line-height: 1.12;
+      line-height: 1.16;
       font-weight: 800;
-      letter-spacing: 0;
-      text-shadow: 0 3px 16px rgba(0,0,0,.50);
+      text-shadow: 0 3px 18px rgba(0,0,0,.6);
+      opacity: 0;
+      transform: translateY(10px);
+      transition: opacity 700ms ease, transform 700ms ease;
     }}
+    .coverTitle.show {{ opacity: 1; transform: translateY(0); }}
     .captionPanel {{
       position: absolute;
-      left: 18px;
-      right: 18px;
+      left: var(--pad);
+      right: var(--pad);
       bottom: {layout["caption_bottom"]}px;
-      z-index: 2;
-      padding: 16px 18px 16px;
-      border-top: 1px solid rgba(255,255,255,.26);
-      border-radius: 0;
-      background: linear-gradient(180deg, {style["shadow"]}, {style["overlay"]});
-      box-shadow: 0 -18px 56px rgba(0,0,0,.25);
+      z-index: 3;
+      display: flex;
+      gap: 12px;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(12,14,20,.62), rgba(8,10,16,.78));
+      backdrop-filter: blur(6px);
+      box-shadow: 0 18px 50px rgba(0,0,0,.4);
+      opacity: 0;
+      transform: translateY(14px);
+      transition: opacity 420ms ease, transform 420ms ease;
+    }}
+    .captionPanel.show {{ opacity: 1; transform: translateY(0); }}
+    .captionPanel::before {{
+      content: "";
+      flex: 0 0 4px;
+      border-radius: 3px;
+      background: var(--accent);
     }}
     .caption {{
       font-size: {layout["caption_font"]}px;
-      line-height: 1.22;
+      line-height: 1.32;
       font-weight: 700;
-      letter-spacing: 0;
       text-wrap: balance;
-      text-shadow: 0 2px 10px rgba(0,0,0,.42);
+      text-shadow: 0 2px 10px rgba(0,0,0,.5);
     }}
     .meta {{
-      display: none;
-    }}
-    .cta {{
-      display: none;
-    }}
-    .cta strong {{
-      color: #fff;
-      font-size: 13px;
-    }}
-    .progressRail {{
-      display: none;
-    }}
-    .progress {{
-      height: 100%;
-      background: #f8d66d;
-      width: 0;
+      position: absolute;
+      left: var(--pad);
+      right: var(--pad);
+      bottom: calc({layout["caption_bottom"]}px + 4px);
+      z-index: 3;
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: rgba(225,230,240,.9);
+      text-shadow: 0 1px 6px rgba(0,0,0,.6);
+      transform: translateY(-100%);
+      padding-bottom: 8px;
     }}
   </style>
 </head>
@@ -483,20 +488,11 @@ def write_html(plan: dict, assets: list[dict]) -> None:
   <div class="stage" id="stage">
     <img class="photo" id="photo" alt="">
     <div class="shade"></div>
-    <div class="topbar">
-      <div class="brand" id="brand"></div>
-      <div class="sceneNo" id="sceneNo"></div>
-    </div>
+    <div class="segs" id="segs"></div>
+    <div class="topbar"><span class="brand" id="brand"></span></div>
     <div class="coverTitle" id="coverTitle"></div>
-    <div class="captionPanel">
-      <div class="caption" id="caption"></div>
-      <div class="meta">
-        <span id="meta"></span>
-        <span id="timecode"></span>
-      </div>
-    </div>
-    <div class="cta"><strong id="ctaMain"></strong><span id="platformTag"></span></div>
-    <div class="progressRail"><div class="progress" id="progress"></div></div>
+    <div class="meta"><span id="timecode"></span><span id="platformTag"></span></div>
+    <div class="captionPanel" id="captionPanel"><div class="caption" id="caption"></div></div>
   </div>
   <script>
     window.VIDEO_PAYLOAD = {json.dumps(payload, ensure_ascii=False)};
@@ -508,45 +504,70 @@ def write_html(plan: dict, assets: list[dict]) -> None:
     const total = plan.duration_seconds;
     const photo = document.getElementById('photo');
     const brand = document.getElementById('brand');
-    const sceneNo = document.getElementById('sceneNo');
     const coverTitle = document.getElementById('coverTitle');
     const caption = document.getElementById('caption');
-    const meta = document.getElementById('meta');
+    const captionPanel = document.getElementById('captionPanel');
     const timecode = document.getElementById('timecode');
-    const ctaMain = document.getElementById('ctaMain');
     const platformTag = document.getElementById('platformTag');
-    const progress = document.getElementById('progress');
-    let started = performance.now();
-    let active = -1;
-    brand.textContent = plan.shop_name + ' · ' + plan.industry;
-    meta.textContent = plan.topic + ' / ' + plan.platform;
+    const segs = document.getElementById('segs');
+
     brand.textContent = plan.shop_name + ' · ' + plan.industry;
     coverTitle.textContent = plan.cover_text;
-    meta.textContent = plan.topic;
-    ctaMain.textContent = '建议面诊咨询';
     platformTag.textContent = plan.platform;
 
-    function pickScene(t) {{
-      let current = scenes[scenes.length - 1];
-      for (const scene of scenes) {{
-        if (t >= scene.start && t < scene.start + scene.duration) current = scene;
+    // 分段进度条：每个场景一段
+    const bars = scenes.map(() => {{
+      const seg = document.createElement('div');
+      seg.className = 'seg';
+      const fill = document.createElement('i');
+      seg.appendChild(fill);
+      segs.appendChild(seg);
+      return fill;
+    }});
+
+    let started = performance.now();
+    let active = -1;
+
+    function pickIndex(t) {{
+      let idx = scenes.length - 1;
+      for (let i = 0; i < scenes.length; i++) {{
+        if (t >= scenes[i].start && t < scenes[i].start + scenes[i].duration) {{ idx = i; break; }}
       }}
-      return current;
+      return idx;
     }}
 
     function render() {{
       const elapsed = (performance.now() - started) / 1000;
       const t = Math.min(elapsed, total - 0.01);
-      const scene = pickScene(t);
-      if (scene.order !== active) {{
-        active = scene.order;
+      const idx = pickIndex(t);
+      const scene = scenes[idx];
+      if (idx !== active) {{
+        active = idx;
         photo.src = 'assets/' + scene.asset_file;
+        // 重置再触发运镜，形成缓动 Ken Burns
+        const out = String(scene.effect).includes('out');
+        photo.style.transition = 'none';
+        photo.style.transform = out ? 'scale(1.14) translateY(6px)' : 'scale(1.04) translateY(-4px)';
+        void photo.offsetWidth;
+        photo.style.transition = 'transform 4200ms cubic-bezier(.22,.61,.36,1), filter 600ms ease';
+        requestAnimationFrame(() => {{
+          photo.style.transform = out ? 'scale(1.04) translateY(-4px)' : 'scale(1.14) translateY(6px)';
+        }});
+        // 字幕换场动画
         caption.textContent = scene.caption;
-        sceneNo.textContent = String(scene.order).padStart(2, '0');
-        timecode.textContent = `${{scene.start}}-${{scene.start + scene.duration}}s`;
-        photo.style.transform = scene.effect.includes('out') ? 'scale(1.02) translateY(-4px)' : 'scale(1.13) translateY(5px)';
+        timecode.textContent = scene.start + '-' + (scene.start + scene.duration) + 's';
+        captionPanel.classList.remove('show');
+        void captionPanel.offsetWidth;
+        captionPanel.classList.add('show');
+        coverTitle.classList.toggle('show', idx === 0);
       }}
-      progress.style.width = ((elapsed / total) * 100).toFixed(2) + '%';
+      // 进度条逐段填充
+      bars.forEach((b, i) => {{
+        let r = 0;
+        if (i < idx) r = 1;
+        else if (i === idx) r = Math.min(1, (t - scene.start) / scene.duration);
+        b.style.width = (r * 100).toFixed(1) + '%';
+      }});
       if (elapsed < total) requestAnimationFrame(render);
       else window.__VIDEO_DONE__ = true;
     }}
@@ -601,71 +622,6 @@ def write_markdown(plan: dict, compliance: dict) -> None:
     (OUTPUT_DIR / "video_plan.md").write_text(md, encoding="utf-8")
 
 
-def render_legacy_gif_preview(plan: dict, assets: list[dict]) -> None:
-    frames = []
-    frame_duration_ms = 1100
-    width, height = 360, 640
-    for idx, scene in enumerate(plan["scenes"]):
-        asset = assets[idx % len(assets)]["file"] if assets else ""
-        img_path = ASSETS_DIR / asset
-        base = Image.open(img_path).convert("RGB")
-        base = crop_cover(base, width, height)
-        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle((0, 0, width, 150), fill=(7, 12, 20, 154))
-        odraw.rectangle((0, 350, width, height), fill=(7, 12, 20, 186))
-        odraw.ellipse((-50, -70, 170, 150), fill=(77, 132, 255, 48))
-        odraw.ellipse((230, 410, 470, 690), fill=(52, 211, 153, 36))
-        base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
-        draw = ImageDraw.Draw(base)
-        font_brand, font_caption, font_meta = load_fonts()
-        font_title = font_for_size(28)
-        font_caption = font_for_size(25)
-        font_meta = font_for_size(13)
-        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
-        draw.rounded_rectangle((292, 22, 340, 52), radius=15, fill=(248, 250, 252))
-        draw.text((306, 31), f"{idx + 1:02d}", fill=(15, 23, 42), font=font_meta)
-        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
-        draw.text((31, 31), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
-        draw.multiline_text(
-            (22, 86),
-            wrap_by_pixel(plan["cover_text"], font_title, 315),
-            fill=(255, 255, 255),
-            font=font_title,
-            spacing=6,
-            stroke_width=3,
-            stroke_fill=(8, 13, 20),
-        )
-        draw.rounded_rectangle((18, 408, 342, 562), radius=18, fill=(9, 14, 22), outline=(96, 112, 132), width=1)
-        draw.text((22, 28), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
-        draw.rounded_rectangle((20, 22, 265, 52), radius=15, fill=(16, 24, 36), outline=(220, 232, 240), width=1)
-        draw.text((31, 31), f"{plan['shop_name']} · {plan['industry']}", fill=(255, 255, 255), font=font_brand)
-        draw.multiline_text(
-            (36, 428),
-            wrap_by_pixel(scene["caption"], font_caption, 288),
-            fill=(255, 255, 255),
-            font=font_caption,
-            spacing=7,
-            stroke_width=2,
-            stroke_fill=(8, 13, 20),
-        )
-        draw.text((22, 580), f"{scene['start']}-{scene['start'] + scene['duration']}s", fill=(220, 232, 240), font=font_meta)
-        draw.text((278, 580), plan["platform"], fill=(220, 232, 240), font=font_meta)
-        draw.rounded_rectangle((22, 610, 338, 615), radius=3, fill=(82, 91, 105))
-        progress_w = int(316 * ((idx + 1) / len(plan["scenes"])))
-        draw.rounded_rectangle((22, 610, 22 + progress_w, 615), radius=3, fill=(248, 214, 109))
-        frames.append(base)
-    if frames:
-        frames[0].save(
-            OUTPUT_DIR / "preview.gif",
-            save_all=True,
-            append_images=frames[1:],
-            duration=frame_duration_ms,
-            loop=0,
-            optimize=True,
-        )
-
-
 def crop_cover(img: Image.Image, width: int, height: int) -> Image.Image:
     src_w, src_h = img.size
     scale = max(width / src_w, height / src_h)
@@ -677,23 +633,14 @@ def crop_cover(img: Image.Image, width: int, height: int) -> Image.Image:
     return resized.crop((left, top, left + width, top + height))
 
 
-def load_fonts():
-    try:
-        return (
-            ImageFont.truetype("msyh.ttc", 16),
-            ImageFont.truetype("msyh.ttc", 30),
-            ImageFont.truetype("msyh.ttc", 14),
-        )
-    except OSError:
-        font = ImageFont.load_default()
-        return font, font, font
-
-
-def font_for_size(size: int):
-    try:
-        return ImageFont.truetype("msyh.ttc", size)
-    except OSError:
-        return ImageFont.load_default()
+def font_for_size(size: int, bold: bool = False):
+    candidates = ["msyhbd.ttc", "msyh.ttc"] if bold else ["msyh.ttc", "msyhbd.ttc"]
+    for name in candidates:
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
 
 
 def hex_to_rgb(value: str) -> tuple[int, int, int]:
@@ -701,44 +648,79 @@ def hex_to_rgb(value: str) -> tuple[int, int, int]:
     return tuple(int(value[i : i + 2], 16) for i in (0, 2, 4))
 
 
+def _vertical_gradient(size: tuple[int, int], top: tuple, bottom: tuple) -> Image.Image:
+    w, h = size
+    grad = Image.new("RGB", (1, h))
+    px = grad.load()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        px[0, y] = tuple(int(top[i] + (bottom[i] - top[i]) * t) for i in range(3))
+    return grad.resize((w, h), Image.Resampling.BILINEAR)
+
+
+def _soft_light_blob(size: tuple[int, int], center: tuple[int, int], radius: int, color: tuple, alpha: int) -> Image.Image:
+    layer = Image.new("RGBA", size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    cx, cy = center
+    d.ellipse((cx - radius, cy - radius, cx + radius, cy + radius), fill=(*color, alpha))
+    return layer.filter(ImageFilter.GaussianBlur(radius * 0.55))
+
+
 def make_placeholder_images(config: dict, count: int = 3) -> list[Path]:
     IMAGE_DIR.mkdir(parents=True, exist_ok=True)
-    scenes = [
-        ("RECEPTION", config.get("shop_name", "Local Studio")),
-        ("DETAIL", config.get("industry", "Service Space")),
-        ("PROCESS", config.get("main_offer", "Clear Process")),
-    ]
+    # 占位图模拟“用户的真实照片”，因此不烤任何店名/标题文字进去——
+    # 这些信息由合成层（品牌条/标题/字幕）负责，避免画面文字重复打架。
+    labels = ["门店空间", "环境细节", "服务流程", "专业团队", "欢迎到店"]
+    # 深色电影感配色：(顶部, 底部, 主光斑色, 辅光斑色)
     palettes = [
-        ((21, 22, 24), (214, 189, 122), (238, 234, 224)),
-        ((34, 39, 36), (185, 166, 117), (231, 235, 229)),
-        ((28, 28, 33), (199, 177, 128), (236, 232, 222)),
+        ((28, 33, 48), (12, 14, 22), (120, 150, 235), (90, 200, 180)),
+        ((38, 30, 28), (16, 12, 12), (220, 160, 110), (200, 120, 90)),
+        ((26, 36, 36), (10, 16, 18), (90, 200, 190), (120, 180, 150)),
+        ((34, 28, 44), (14, 10, 20), (170, 130, 230), (210, 140, 200)),
+        ((30, 34, 30), (12, 16, 12), (160, 200, 120), (200, 190, 110)),
     ]
+    w, h = 1080, 1920
     out = []
     for idx in range(count):
         path = IMAGE_DIR / f"demo_{idx + 1}.png"
-        bg, accent, surface = palettes[idx % len(palettes)]
-        label, title = scenes[idx % len(scenes)]
-        img = Image.new("RGB", (1080, 1920), color=bg)
+        top, bottom, glow_a, glow_b = palettes[idx % len(palettes)]
+        label = labels[idx % len(labels)]
+
+        img = _vertical_gradient((w, h), top, bottom).convert("RGBA")
+        # 两团柔焦光，营造景深与空间感
+        img = Image.alpha_composite(img, _soft_light_blob((w, h), (int(w * 0.26), int(h * 0.22)), 520, glow_a, 78))
+        img = Image.alpha_composite(img, _soft_light_blob((w, h), (int(w * 0.82), int(h * 0.74)), 600, glow_b, 64))
+        # 小的散景光点
+        for bx, by, br, ba in [(190, 1380, 70, 60), (320, 1500, 44, 50), (860, 520, 90, 46), (760, 360, 50, 40)]:
+            img = Image.alpha_composite(img, _soft_light_blob((w, h), (bx, by), br, (255, 255, 255), ba))
+        img = img.convert("RGB")
+
+        # 暗角，把视线收拢到中心
+        vignette = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(vignette).ellipse((-int(w * 0.35), -int(h * 0.18), int(w * 1.35), int(h * 1.18)), fill=255)
+        vignette = vignette.filter(ImageFilter.GaussianBlur(260))
+        dark = Image.new("RGB", (w, h), (0, 0, 0))
+        img = Image.composite(img, dark, vignette)
+
+        # 中段构图：柔和对角光带 + 同心细圆环，填充空旷感（模拟真实场景的层次与焦点）
+        deco = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        ddraw = ImageDraw.Draw(deco)
+        ddraw.polygon(
+            [(0, int(h * 0.30)), (w, int(h * 0.10)), (w, int(h * 0.17)), (0, int(h * 0.37))],
+            fill=(*glow_a, 24),
+        )
+        cx, cy = int(w * 0.5), int(h * 0.45)
+        for r, a in [(380, 30), (290, 24), (200, 18)]:
+            ddraw.ellipse((cx - r, cy - r, cx + r, cy + r), outline=(235, 240, 250, a), width=3)
+        deco = deco.filter(ImageFilter.GaussianBlur(2))
+        img = Image.alpha_composite(img.convert("RGBA"), deco).convert("RGB")
+
         draw = ImageDraw.Draw(img)
-        font_label = font_for_size(34)
-        font_title = font_for_size(76)
-
-        for y in range(1920):
-            shade = int(30 * (y / 1920))
-            color = tuple(min(255, c + shade) for c in bg)
-            draw.line((0, y, 1080, y), fill=color)
-
-        draw.ellipse((-180, -260, 620, 520), fill=tuple(min(255, c + 34) for c in bg))
-        draw.ellipse((580, 1160, 1380, 2140), fill=tuple(max(0, c - 12) for c in bg))
-        draw.rounded_rectangle((118, 300, 962, 1430), radius=72, fill=surface)
-        draw.rounded_rectangle((164, 360, 916, 1370), radius=54, outline=accent, width=5)
-        draw.rounded_rectangle((218, 470, 862, 920), radius=46, fill=(245, 242, 235))
-        draw.rectangle((218, 900, 862, 908), fill=accent)
-        draw.rounded_rectangle((248, 1010, 832, 1060), radius=25, fill=(206, 202, 192))
-        draw.rounded_rectangle((248, 1100, 740, 1142), radius=21, fill=(194, 190, 182))
-        draw.rounded_rectangle((248, 1190, 800, 1232), radius=21, fill=(218, 214, 204))
-        draw.text((160, 1518), label, fill=accent, font=font_label)
-        draw.text((160, 1580), wrap_text(title, 10), fill=(246, 242, 232), font=font_title, spacing=18)
+        font_tag = font_for_size(30)
+        # 仅在右下角留一个极低调的占位水印，说明这是示例素材；不喧宾夺主。
+        tag = f"示例素材 · {label}"
+        tag_w = draw.textbbox((0, 0), tag, font=font_tag)[2]
+        draw.text((w - tag_w - 64, h - 110), tag, fill=(140, 148, 165), font=font_tag)
         img.save(path)
         out.append(path)
     return out
@@ -763,65 +745,182 @@ def wrap_by_pixel(text: str, font, max_width: int) -> str:
     return "\n".join(lines[:4])
 
 
+def _scrim(size: tuple[int, int], top_strength: int, bottom_strength: int) -> Image.Image:
+    """上下双向压暗的平滑遮罩，保证叠字区域可读，中间留出画面。"""
+    w, h = size
+    mask = Image.new("L", (1, h), 0)
+    px = mask.load()
+    for y in range(h):
+        t = y / max(1, h - 1)
+        top = top_strength * max(0.0, 1 - t / 0.42) ** 1.6
+        bottom = bottom_strength * max(0.0, (t - 0.46) / 0.54) ** 1.4
+        px[0, y] = int(min(255, max(top, bottom)))
+    mask = mask.resize((w, h), Image.Resampling.BILINEAR)
+    scrim = Image.new("RGBA", (w, h), (6, 8, 12, 0))
+    scrim.putalpha(mask)
+    return scrim
+
+
+def _ease_in_out(t: float) -> float:
+    """平滑缓动，0→1，两端慢中间快，让运镜更自然。"""
+    return 3 * t * t - 2 * t * t * t
+
+
+def _ken_burns_crop(img: Image.Image, width: int, height: int, effect: str, prog: float) -> Image.Image:
+    """根据 effect 和进度 prog(0→1) 输出一帧带运镜的裁切。
+    先把图铺满画布并留出余量，再在余量内平滑缩放/平移。"""
+    over = 1.16  # 放大余量，给平移/缩放留空间
+    big = crop_cover(img, int(width * over), int(height * over))
+    bw, bh = big.size
+    e = _ease_in_out(prog)
+
+    # 缩放系数：zoom_in 由小变大，zoom_out 反之，其余维持轻微推进
+    if "zoom_in" in effect:
+        scale = 1.0 + 0.10 * e
+    elif "zoom_out" in effect:
+        scale = 1.10 - 0.10 * e
+    else:
+        scale = 1.03 + 0.04 * e
+
+    crop_w, crop_h = width / scale, height / scale
+    # 平移：pan_up 纵向移动，cut/默认轻微横移
+    max_dx, max_dy = bw - crop_w, bh - crop_h
+    if "pan_up" in effect:
+        cx, cy = max_dx * 0.5, max_dy * (1 - e)
+    elif "pan" in effect:
+        cx, cy = max_dx * e, max_dy * 0.5
+    else:
+        cx, cy = max_dx * (0.5 + 0.12 * (e - 0.5)), max_dy * 0.5
+
+    box = (cx, cy, cx + crop_w, cy + crop_h)
+    return big.resize((width, height), Image.Resampling.LANCZOS, box=box)
+
+
 def render_gif_preview(plan: dict, assets: list[dict]) -> None:
     frames = []
-    frame_duration_ms = 1200
-    width, height = get_canvas_size(plan)
-    layout = get_layout(width, height)
+    durations = []
+    fps = 12  # 补间帧率，越高越顺滑
+    out_w, out_h = get_canvas_size(plan)
+    ss = 2  # 超采样：放大渲染再缩小，文字与圆角更锐利
+    width, height = out_w * ss, out_h * ss
+    base_layout = get_layout(out_w, out_h)
+    layout = {k: (v * ss if k != "caption_width" else width - 45 * ss) for k, v in base_layout.items()}
     style = get_visual_style(plan)
     accent = hex_to_rgb(style["accent"])
+    pad = layout["brand_left"]
+    n = len(plan["scenes"])
+    total = plan["duration_seconds"]
+
+    font_brand = font_for_size(int(15 * ss), bold=True)
+    font_title = font_for_size(layout["title_font"], bold=True)
+    font_caption = font_for_size(layout["caption_font"], bold=True)
+    font_meta = font_for_size(int(13 * ss))
+
+    # 预备每个场景的叠加层（与帧内插值无关的部分，整段不变），逐帧只更新进度条
+    scrim_layer = _scrim((width, height), top_strength=150, bottom_strength=225)
+    glow_layer = _soft_light_blob(
+        (width, height), (int(width * 0.18), int(height * 0.12)), int(width * 0.5), accent, 30
+    )
+
+    def draw_overlay(canvas: Image.Image, scene: dict, idx: int, seg_prog: float) -> Image.Image:
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), scrim_layer)
+        canvas = Image.alpha_composite(canvas, glow_layer).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+
+        # 顶部品牌条
+        bar_y = layout["brand_top"]
+        draw.rounded_rectangle((pad, bar_y, pad + 6 * ss, bar_y + 30 * ss), radius=3 * ss, fill=accent)
+        draw.text(
+            (pad + 18 * ss, bar_y + 4 * ss),
+            f"{plan['shop_name']} · {plan['industry']}",
+            fill=(255, 255, 255), font=font_brand, stroke_width=ss, stroke_fill=(0, 0, 0),
+        )
+
+        # 封面标题：首屏淡入上移，之后保持
+        title_t = min(1.0, (idx + seg_prog) / 0.6) if idx == 0 else 1.0
+        ty = layout["title_top"] + int((1 - _ease_in_out(title_t)) * 18 * ss)
+        draw.multiline_text(
+            (pad, ty),
+            wrap_by_pixel(plan["cover_text"], font_title, layout["caption_width"]),
+            fill=(255, 255, 255), font=font_title, spacing=8 * ss,
+            stroke_width=2 * ss, stroke_fill=(8, 10, 16),
+        )
+
+        # 底部字幕面板
+        cap_lines = wrap_by_pixel(scene["caption"], font_caption, width - 2 * (pad + 20 * ss))
+        line_count = cap_lines.count("\n") + 1
+        cap_h = line_count * int(layout["caption_font"] * 1.5) + 36 * ss
+        panel_bottom = height - layout["caption_bottom"]
+        panel_top = panel_bottom - cap_h
+        # 字幕入场：每段前段轻微上滑淡入
+        intro = _ease_in_out(min(1.0, seg_prog / 0.25))
+        slide = int((1 - intro) * 16 * ss)
+        panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        pdraw = ImageDraw.Draw(panel)
+        pdraw.rounded_rectangle(
+            (pad - 4 * ss, panel_top + slide, width - pad + 4 * ss, panel_bottom + slide),
+            radius=18 * ss, fill=(10, 12, 18, int(150 * intro)),
+        )
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), panel).convert("RGB")
+        draw = ImageDraw.Draw(canvas)
+        draw.rounded_rectangle(
+            (pad + 6 * ss, panel_top + 18 * ss + slide, pad + 12 * ss, panel_bottom - 18 * ss + slide),
+            radius=3 * ss, fill=accent,
+        )
+        draw.multiline_text(
+            (pad + 26 * ss, panel_top + 18 * ss + slide),
+            cap_lines, fill=(255, 255, 255), font=font_caption,
+            spacing=10 * ss, stroke_width=ss, stroke_fill=(6, 8, 12),
+        )
+
+        # 时间码 + 平台标签
+        draw.text(
+            (pad, panel_top - 26 * ss + slide),
+            f"{scene['start']:02d}-{scene['start'] + scene['duration']:02d}s",
+            fill=(218, 224, 235), font=font_meta, stroke_width=ss, stroke_fill=(0, 0, 0),
+        )
+        plat = str(plan["platform"])
+        plat_w = draw.textbbox((0, 0), plat, font=font_meta)[2]
+        draw.text(
+            (width - pad - plat_w, panel_top - 26 * ss + slide),
+            plat, fill=(218, 224, 235), font=font_meta, stroke_width=ss, stroke_fill=(0, 0, 0),
+        )
+
+        # 顶部分段进度条，当前段随 seg_prog 平滑填充
+        rail_y = layout["brand_top"] - 14 * ss
+        gap = 6 * ss
+        seg_w = (width - 2 * pad - gap * (n - 1)) / n
+        for s in range(n):
+            x0 = pad + s * (seg_w + gap)
+            draw.rounded_rectangle((x0, rail_y, x0 + seg_w, rail_y + 4 * ss), radius=2 * ss, fill=(40, 44, 54))
+            fill_ratio = 1.0 if s < idx else (seg_prog if s == idx else 0.0)
+            if fill_ratio > 0:
+                draw.rounded_rectangle(
+                    (x0, rail_y, x0 + seg_w * fill_ratio, rail_y + 4 * ss), radius=2 * ss, fill=accent
+                )
+        return canvas
+
     for idx, scene in enumerate(plan["scenes"]):
         asset = assets[idx % len(assets)]["file"] if assets else ""
-        img_path = ASSETS_DIR / asset
-        base = crop_cover(Image.open(img_path).convert("RGB"), width, height)
+        src = Image.open(ASSETS_DIR / asset).convert("RGB")
+        # 每段固定约 fps 帧：顺滑且体积可控
+        seg_frames = max(8, fps)
+        for f in range(seg_frames):
+            prog = f / (seg_frames - 1) if seg_frames > 1 else 0.0
+            kb = _ken_burns_crop(src, width, height, scene["effect"], prog)
+            frame = draw_overlay(kb, scene, idx, prog)
+            frames.append(frame.resize((out_w, out_h), Image.Resampling.LANCZOS))
+            durations.append(int(scene["duration"] / seg_frames * 1000))
 
-        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        odraw = ImageDraw.Draw(overlay)
-        odraw.rectangle((0, 0, width, int(height * 0.26)), fill=(7, 8, 10, 112))
-        odraw.rectangle((0, int(height * 0.60), width, height), fill=(7, 8, 10, 188))
-        odraw.ellipse((-70, -90, int(width * 0.56), int(height * 0.28)), fill=(*accent, 24))
-        odraw.ellipse((int(width * 0.70), int(height * 0.67), width + 120, height + 120), fill=(255, 255, 255, 18))
-        base = Image.alpha_composite(base.convert("RGBA"), overlay).convert("RGB")
-        draw = ImageDraw.Draw(base)
-
-        font_brand = font_for_size(15)
-        font_title = font_for_size(layout["title_font"])
-        font_caption = font_for_size(layout["caption_font"])
-
-        brand_x = layout["brand_left"]
-        brand_y = layout["brand_top"]
-        draw.rectangle((brand_x, brand_y, brand_x + 4, brand_y + 28), fill=accent)
-        draw.text((brand_x + 14, brand_y + 2), f"{plan['shop_name']} / {plan['industry']}", fill=(255, 255, 255), font=font_brand)
-        draw.multiline_text(
-            (layout["brand_left"], layout["title_top"]),
-            wrap_by_pixel(plan["cover_text"], font_title, layout["caption_width"]),
-            fill=(255, 255, 255),
-            font=font_title,
-            spacing=6,
-            stroke_width=1,
-            stroke_fill=(8, 13, 20),
-        )
-        caption_x = layout["brand_left"]
-        caption_y = height - layout["caption_bottom"] - 128
-        draw.rectangle((caption_x, caption_y - 22, width - layout["brand_left"], caption_y - 19), fill=accent)
-        draw.multiline_text(
-            (caption_x, caption_y),
-            wrap_by_pixel(scene["caption"], font_caption, layout["caption_width"]),
-            fill=(255, 255, 255),
-            font=font_caption,
-            spacing=8,
-            stroke_width=0,
-            stroke_fill=(8, 13, 20),
-        )
-        frames.append(base)
     if frames:
         frames[0].save(
             OUTPUT_DIR / "preview.gif",
             save_all=True,
             append_images=frames[1:],
-            duration=frame_duration_ms,
+            duration=durations,
             loop=0,
             optimize=True,
+            disposal=2,
         )
 
 
@@ -831,6 +930,7 @@ def main() -> None:
     parser.add_argument("--demo-assets", action="store_true", help="Create placeholder images if no images exist.")
     parser.add_argument("--refresh-demo-assets", action="store_true", help="Regenerate demo_*.png without touching real images.")
     parser.add_argument("--clean", action="store_true", help="Clear generated output before running.")
+    parser.add_argument("--provider", default="mock", choices=["mock", "claude"], help="LLM provider for analysis/script/scenes.")
     args = parser.parse_args()
 
     if args.clean and OUTPUT_DIR.exists():
@@ -848,8 +948,18 @@ def main() -> None:
     if not images:
         raise SystemExit("No images found. Put 1-5 images into input/images or run with --demo-assets.")
 
-    plan = generate_plan(config, images)
+    asset_refs = [
+        {"asset_id": f"asset_{idx}", "file": str(path), "kind": "image", "duration": None, "tags": []}
+        for idx, path in enumerate(images, start=1)
+    ]
+    project_input = build_project_input(config, assets=asset_refs)
+    try:
+        generated = generate_video_content(project_input, provider_name=args.provider)
+    except LLMGenerationError as exc:
+        raise SystemExit(f"LLM generation failed: {exc}") from exc
+    plan = legacy_plan_from_generation(config, generated)
     compliance = check_compliance(config, plan)
+    # TODO(T-002): when compliance fails in medical mode, ask the LLM provider to regenerate with the issues as constraints.
     assets = copy_assets(images)
     write_srt(plan)
     write_voiceover_files(plan)
@@ -857,7 +967,22 @@ def main() -> None:
     write_markdown(plan, compliance)
     render_gif_preview(plan, assets)
     (OUTPUT_DIR / "plan.json").write_text(
-        json.dumps({"plan": plan, "compliance": compliance}, ensure_ascii=False, indent=2),
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "project_id": project_input["project_id"],
+                "status": "generated",
+                "input": project_input["input"],
+                "config": project_input["config"],
+                "analysis": generated["analysis"],
+                "script": generated["script"],
+                "scenes": generated["scenes"],
+                "plan": plan,
+                "compliance": compliance,
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
     print(f"Generated: {OUTPUT_DIR}")

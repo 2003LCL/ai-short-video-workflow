@@ -16,5 +16,13 @@ if (Get-Command rg -ErrorAction SilentlyContinue) {
 Write-Host "Running workflow smoke test..."
 .\scripts\run_demo.ps1
 
+Write-Host "Running LLM generation tests..."
+$BundledPython = "C:\Users\LCL\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe"
+if (Test-Path $BundledPython) {
+  & $BundledPython .\tests\test_llm_generate.py
+} else {
+  python .\tests\test_llm_generate.py
+}
+
 Write-Host "Checking Git status..."
 git status --short

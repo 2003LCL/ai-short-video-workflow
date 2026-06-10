@@ -3,6 +3,26 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 条，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-11 #13] Claude(PM) → Codex
+**改动**: 确认 M2 已在 GitHub（无需重复提交）；启动 M3，产出 T-004 MP4 渲染任务规格 + 批准渲染依赖。Codex 可据此开工。
+**涉及文件**:
+- 新增 `CONTRACTS/T-004_MP4_render_spec.md`（M3 施工图，Codex 必读，验收标准在文末）
+- 更新 `DECISIONS.md`（+ADR-012：批准 moviepy + imageio-ffmpeg，定复用现有运镜/叠层、不改契约填 renders[]、失败降级）
+- 更新 `TASKS.md`（T-004 → TODO 就绪）、`STATE.md`（焦点转 M3）、本交接段
+- 未写任何业务代码，未改 CONTRACTS 的数据契约（schema 未动）
+**先核对了 GitHub 状态（用户要求先提交）**: `git fetch` 后 `HEAD == origin/main == 41c18c0`（"M2: 接入 TTS 配音模块"），工作树 clean，0 ahead/0 behind。**M2 上一棒已提交远端，本次无需再推**——已向用户说明。
+**为什么这么设计 M3**:
+- **落实 ADR-008 不另起炉灶**：MoviePy(MIT) + imageio-ffmpeg(自带 ffmpeg 二进制，Windows 免装) 是这阶段最省事的落地。MoviePy 处理「逐段音频按时间定位 + 静音留白 + 合并音视频」零摩擦。
+- **复用而非重写**：要求把 `render_gif_preview` 里已验证的 `_ken_burns_crop` + 叠层绘制抽成 GIF/MP4 共享函数，保证 MP4 与预览视觉一致，符合「不重写可用代码」。
+- **绕开版面重调**：MP4 直接用现有 ss 超采样帧（9:16→720×1280），复用全部版面/字体计算，零摩擦达 720p。
+- **不升级契约**：v1 契约已预埋顶层 `renders[]`(kind:"mp4")，M3 只填充，省一轮契约 ADR——这是 PM 该判的，不让 Codex 纠结。
+- **把那个反复点名的时长坑写成硬要求**：`effective = max(scene.duration, audio_duration + 0.6s 留白)`，画面让步给配音，渲染层自算时间轴**不回写 scenes**。总时长可略超 24s，这是预期行为（配音完整性优先）。
+- **沿用 T-003 健壮性教训**：缺依赖/合成失败要 warning 降级不阻断其他产物，且失败不删上次成功的 video.mp4（先写 .tmp 再原子替换）。
+**接口变化**: 无。CONTRACTS 未动，Codex 只填已存在的 `renders[]`。
+**验证情况**: 仅文档/契约/规格，未写代码。M1/M2 代码未动仍可运行。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-008/011/012→schema→T-004 spec，实现 `render_mp4.py` 并接入 `run_workflow.py`，完成后改 T-004 为 REVIEW 并在此写交接段，由 Claude 复审。
+**给 Codex 的话**: 施工图是 `CONTRACTS/T-004_MP4_render_spec.md`。MoviePy 1.x/2.x API 有差异（set_audio vs with_audio 等），锁定一个版本、在 requirements.txt 写清下限、在 HANDOFF 写明你用的 API，复审时一并核对。时长对齐那条是这个任务的命门，别让配音被切断。
+
 ## [2026-06-10 #12] Claude(Reviewer) → 你(人类)
 **改动**: 复审 T-003 健壮性返修，**通过，T-003 彻底 DONE**。M2 里程碑完整收尾。
 **涉及文件**: 仅更新协作文档（TASKS.md T-003→DONE、STATE.md、本段）。代码未改。

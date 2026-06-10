@@ -5,7 +5,13 @@
 
 ## 进行中 / 待办
 
-（暂无进行中任务，等待你拍板：是否提交 M2 到 GitHub + 启动 M3）
+### T-004 MP4 渲染模块 (M3)
+- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **目标**: plan.json + 配音 mp3 + 图片 → 带配音/字幕/运镜的 `output/video.mp4`，作为主交付物（GIF/HTML 保留为轻量预览）。
+- **硬要求**: 按 `scene.voiceover_audio.audio_duration` 拉长画面时长（`effective = max(duration, audio_dur + 0.6s 留白)`），配音绝不被切断。复用现有运镜/叠层逻辑，不重写、不改契约（填 v1 已预埋的 `renders[]`）。
+- **依赖**: moviepy + imageio-ffmpeg（ADR-012 已批准）。失败必须降级，不阻断其他产物。
+- **施工图**: `CONTRACTS/T-004_MP4_render_spec.md`（验收标准在文末）。
 
 ## 已完成
 

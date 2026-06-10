@@ -18,6 +18,7 @@ output/*.mp4
 output/*.webm
 output/*.wav
 output/*.mp3
+output/voiceover_audio/
 
 # Keep small demo artifacts for portfolio display
 !output/preview.gif

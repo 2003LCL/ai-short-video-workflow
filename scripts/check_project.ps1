@@ -24,5 +24,12 @@ if (Test-Path $BundledPython) {
   python .\tests\test_llm_generate.py
 }
 
+Write-Host "Running TTS generation tests..."
+if (Test-Path $BundledPython) {
+  & $BundledPython .\tests\test_tts_generate.py
+} else {
+  python .\tests\test_tts_generate.py
+}
+
 Write-Host "Checking Git status..."
 git status --short

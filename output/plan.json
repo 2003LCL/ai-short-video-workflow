@@ -86,7 +86,13 @@
       "effect": "slow_zoom_in",
       "edited": false,
       "start": 0,
-      "duration": 8
+      "duration": 8,
+      "voiceover_audio": {
+        "file": "voiceover_audio/scene_01.mp3",
+        "audio_duration": 6.087,
+        "provider": "edge",
+        "voice": "zh-CN-XiaoxiaoNeural"
+      }
     },
     {
       "order": 2,
@@ -96,7 +102,13 @@
       "effect": "pan_up",
       "edited": false,
       "start": 8,
-      "duration": 8
+      "duration": 8,
+      "voiceover_audio": {
+        "file": "voiceover_audio/scene_02.mp3",
+        "audio_duration": 8.412,
+        "provider": "edge",
+        "voice": "zh-CN-XiaoxiaoNeural"
+      }
     },
     {
       "order": 3,
@@ -106,9 +118,21 @@
       "effect": "cut",
       "edited": false,
       "start": 16,
-      "duration": 8
+      "duration": 8,
+      "voiceover_audio": {
+        "file": "voiceover_audio/scene_03.mp3",
+        "audio_duration": 5.887,
+        "provider": "edge",
+        "voice": "zh-CN-XiaoxiaoNeural"
+      }
     }
   ],
+  "audio": {
+    "provider": "edge",
+    "voice": "zh-CN-XiaoxiaoNeural",
+    "segments": 3,
+    "total_audio_duration": 20.386
+  },
   "plan": {
     "shop_name": "星河口腔",
     "industry": "口腔门诊",
@@ -135,7 +159,13 @@
         "effect": "slow_zoom_in",
         "edited": false,
         "start": 0,
-        "duration": 8
+        "duration": 8,
+        "voiceover_audio": {
+          "file": "voiceover_audio/scene_01.mp3",
+          "audio_duration": 6.087,
+          "provider": "edge",
+          "voice": "zh-CN-XiaoxiaoNeural"
+        }
       },
       {
         "order": 2,
@@ -145,7 +175,13 @@
         "effect": "pan_up",
         "edited": false,
         "start": 8,
-        "duration": 8
+        "duration": 8,
+        "voiceover_audio": {
+          "file": "voiceover_audio/scene_02.mp3",
+          "audio_duration": 8.412,
+          "provider": "edge",
+          "voice": "zh-CN-XiaoxiaoNeural"
+        }
       },
       {
         "order": 3,
@@ -155,7 +191,13 @@
         "effect": "cut",
         "edited": false,
         "start": 16,
-        "duration": 8
+        "duration": 8,
+        "voiceover_audio": {
+          "file": "voiceover_audio/scene_03.mp3",
+          "audio_duration": 5.887,
+          "provider": "edge",
+          "voice": "zh-CN-XiaoxiaoNeural"
+        }
       }
     ],
     "subtitle_style": "premium_readable",

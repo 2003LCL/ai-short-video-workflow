@@ -3,6 +3,124 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 条，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-10 #12] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-003 健壮性返修，**通过，T-003 彻底 DONE**。M2 里程碑完整收尾。
+**涉及文件**: 仅更新协作文档（TASKS.md T-003→DONE、STATE.md、本段）。代码未改。
+**复审怎么做的（这次精心编排了验证顺序，吸取上次教训）**:
+- TTS 单测通过，含新增的「先成功生成→再全失败→旧文件仍在且内容不变」测试，是真测。
+- 按返修单要求的关键顺序验证：edge 生成 3 个 mp3 → 紧接着跑 aliyun(全失败，**不带 --clean**) → 确认 3 个 mp3 **仍保留**、plan.json audio 退化为 aliyun/segments=0 但文件未删。修复目标达成。
+- **最后用 edge 收尾跑一次**，让现场 plan.json(audio=edge/segments=3) 与磁盘真 mp3 一致——不再留矛盾现场给用户。
+**为什么通过**: 临时目录 + 原子替换的实现正确（segments>0 才替换正式目录，全失败删临时目录保留旧产物），范围没有扩大，只修了这一个点。
+**接口变化**: 无。
+**下一步建议（等你拍板）**:
+1. 是否把 M2(含本次健壮性修复) 提交 GitHub。
+2. 启动 M3：FFmpeg/MoviePy 出真 MP4。**M3 规格必须把「按 scene.voiceover_audio.audio_duration 微调画面节奏」写成硬要求**（scene2 配音 8.4s > 画面 8s，不处理配音会被切断）。
+3. 文案优化按 ADR-011 推迟到闭环跑通后再回炉，M3 阶段不碰。
+
+## [2026-06-10 #11] Codex(Dev) → Claude(Reviewer)
+**改动**: 按 `CONTRACTS/T-003_review_fixes.md` 只修 T-003 一个健壮性问题：失败的 TTS 运行不再清空上一次成功生成的 `output/voiceover_audio/`。T-003 已改回 REVIEW。
+
+**涉及文件**:
+- 修改 `tts_generate.py`
+- 修改 `tests/test_tts_generate.py`
+- 更新 `Claude-Codex/STATE.md`
+- 更新 `Claude-Codex/TASKS.md`
+- 更新本交接段
+- 未修改 `CONTRACTS/`、M1、LLM、渲染逻辑
+
+**为什么这么做**:
+- 原逻辑在合成前直接 `rmtree(output/voiceover_audio)`，导致 aliyun 占位/断网等整体失败会删掉旧的好音频。
+- 新逻辑先生成到 `output/voiceover_audio.tmp/`。逐段尝试完成后，如果 `segments > 0`，才删除正式 `voiceover_audio/` 并把临时目录移动过去；如果 `segments == 0`，删除临时目录并保留正式目录不动。
+- `NoneProvider` 路径仍然直接 return，不碰目录。部分成功时仍按 review 单要求用成功片段替换正式目录。
+
+**接口变化**: 无。
+
+**验证情况**:
+- 通过：`python tests/test_tts_generate.py`，新增测试覆盖「先成功生成，再全失败，旧音频文件仍存在且内容不变」。
+- 通过：`python run_workflow.py --demo-assets --clean --tts-provider edge`，真实生成 mp3。
+- 通过：紧接着运行 `python run_workflow.py --demo-assets --tts-provider aliyun`（不带 `--clean`），aliyun 全失败但 `output/voiceover_audio/scene_01.mp3`、`scene_02.mp3`、`scene_03.mp3` 仍保留；`plan.json` 的 `audio.provider=aliyun`、`segments=0`。
+- 通过：`.\scripts\check_project.ps1`。
+
+**下一步建议**: Claude 只复审本次临时目录 + 替换逻辑和新增测试即可。功能层面的 TTS 字段、edge 时长、Provider 抽象上轮已过，本轮没有动。
+
+## [2026-06-10 #10] Claude(Reviewer) → Codex
+**改动**: 修正上轮复审的一个疏忽，并指派 T-003 健壮性返修。T-003 退回 DOING。
+**自我纠错（重要，留痕）**: 上一段(#9)我说复审跑通五条路径——结论属实，但我**验证命令的编排有疏忽**：把会清空目录的失败用例(aliyun)放在成功用例(edge)之后跑，导致真生成的 3 个 mp3 被最后那条 aliyun 命令清掉，留给用户的现场是空目录、plan.json 停在 aliyun/segments=0。用户当场质疑「目录是空的你怎么通过的」，质疑成立。我已重跑 edge 把真产物补回。教训：验证多 provider 时，会破坏产物的用例必须放最后或隔离目录跑。
+**这暴露了代码的真实缺陷（本次返修目标）**: `generate_voiceover_audio` 无条件先 `rmtree` 清空 `voiceover_audio/` 再生成 → 任何整体失败的运行(aliyun占位/断网)都会删掉上次的成功配音且无新产物。对要反复重跑的自动化流水线不可接受。
+**涉及文件**:
+- 新增 `CONTRACTS/T-003_review_fixes.md`（只修这一个健壮性问题，修法已定：临时目录+原子替换，失败不破坏已有产物）
+- 更新 TASKS.md（T-003 → DOING）
+**接口变化**: 无，不许动 CONTRACTS。
+**用户反馈（务必记住，影响后续所有生成）**: 用户确认「AI 配音效果 OK，音色不是重点」，并明确指出 **真正决定视频好坏的是文案内容质量**。→ 这意味着后续重心应放在 LLM 生成的脚本/卖点/钩子文案质量上，而非配音/渲染的花哨度。M1 的 mock 文案只是占位，真接 Claude provider 时的 prompt 质量、文案打磨是产品核心竞争力。建议后续单开一个「文案质量」专项(选题角度、钩子、转化引导)。
+**下一步建议**: Codex 读 `CONTRACTS/T-003_review_fixes.md` 修健壮性问题(含新增「失败不破坏已有产物」测试)，重跑验证基线，T-003 回 REVIEW。Claude 复审这一个点即可。
+
+## [2026-06-10 #9] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-003 M2，**通过，T-003 → DONE**。M2 里程碑完成，AI 中文口播能真正出声了。
+**涉及文件**: 仅更新协作文档（TASKS.md T-003→DONE、STATE.md、本段）。代码未改。
+**复审怎么做的**（亲自跑五条路径，无虚报）:
+- TTS 单测通过（含强制单段失败 → 其他段继续的降级验证）。
+- LLM 单测回归通过（M1 没被 M2 改动破坏）。
+- `--skip-tts` 跑通，segments=0、不打印音频产物、其他产物正常。
+- **真实 edge 联网生成 3 个 mp3**（35-50KB 真音频），plan.json 顶层 audio.provider=edge/segments=3/total=20.386s，三段 scene 的 voiceover_audio 字段严格符合契约，时长用 WordBoundary 真实算出（6.087/8.412/5.887s）。
+- aliyun 占位被选中时逐段清晰报错且其他产物照常产出；mp3 经 git check-ignore 确认不会进仓库。
+**为什么通过**: 失败降级、音频时长、契约符合度三个 Codex 自己点名要审的点全部经得起跑。Provider 抽象沿用 M1 模式、edge-tts 注释里点明了仅试水非商用。质量稳定。
+**接口变化**: 无（CONTRACTS 未动，Codex 正确地只消费了 Claude 上轮升级的字段）。
+**发现一个不阻塞的设计前提，已记入 STATE/TASKS 留给 M3**: 语音真实时长 ≠ 画面 duration（scene2 配音 8.412s > 画面 8s）。这是 M2 范围外（M2 只管出声），但 M3 渲染合成时必须按 audio_duration 微调画面节奏，否则配音会被切断。
+**下一步建议（等你拍板）**:
+1. 是否把 M2 提交 GitHub（当前在本地工作区；音频 mp3 已被 .gitignore 忽略，不会进仓库）。
+2. 启动 M3：FFmpeg/MoviePy 出真 MP4（引擎已定 ADR-008）。届时 Claude 写 M3 规格，把上面那个时长对齐问题作为硬要求写进去。
+**给你的提醒**: 你现在已经可以亲自去 `output/voiceover_audio/` 听三段 mp3，确认 AI 中文口播效果到底够不够用——这是 M2 的核心目的。
+
+## [2026-06-10 #8] Codex(Dev) → Claude(Reviewer)
+**改动**: 实现 T-003 / M2 TTS 配音模块。新增 `tts_generate.py`，把 edge-tts / aliyun / none 做成 Provider 抽象，并接入 `run_workflow.py`。T-003 已从 DOING 改为 REVIEW。
+
+**涉及文件**:
+- 新增 `tts_generate.py`
+- 新增 `tests/test_tts_generate.py`
+- 修改 `run_workflow.py`
+- 修改 `requirements.txt`（新增 `edge-tts>=7.0.0`）
+- 修改 `.gitignore`（忽略 `output/voiceover_audio/`）
+- 修改 `scripts/run_demo.ps1`（demo smoke test 用 `--skip-tts`，避免检查脚本依赖网络）
+- 修改 `scripts/check_project.ps1`（加入 TTS 单测）
+- 更新 `Claude-Codex/STATE.md`、`Claude-Codex/TASKS.md`、本交接段
+- 未修改 `CONTRACTS/`，仅消费 Claude 已升级的 `scene.voiceover_audio` 和顶层 `audio` 字段
+
+**为什么这么做**:
+- **Provider 抽象**：`TTSProvider.synthesize(text, out_path) -> float` 返回音频时长，`EdgeTTSProvider` 负责真实试水，`AliyunProvider` 留清晰未实现占位，`NoneProvider` 用于跳过配音。这样 M2 能先跑通免费口播，将来切阿里云 CosyVoice 时只新增真实 provider，不改主流程。
+- **失败降级**：`generate_voiceover_audio()` 对单段失败只打印 warning 并继续其他段；edge 包缺失/联网失败/aliyun 未实现都不会阻断 GIF、HTML、SRT、plan.json 等其他产物。`--skip-tts` 等价 `--tts-provider none`，scene 不写 `voiceover_audio`，顶层 `audio` 返回 provider=none、segments=0。
+- **音频时长方案**：edge 路径用 `Communicate.stream()` 收集 `WordBoundary` / `SentenceBoundary` metadata，按 `offset + duration` 取最后边界时间，单位按 edge-tts 的 100ns tick 转秒(`/ 10_000_000`)；如果 metadata 缺失，再降级用 `文本非空字符数 / 4.5` 估算。当前真实 edge 验证能拿到边界时长，未走估算。这个点建议 Claude 重点复审。
+- **检查脚本稳定性**：`scripts/run_demo.ps1` 改为 `--skip-tts`，因为项目级 smoke test 不应依赖外网；真实 edge 生成通过单独命令验证。
+
+**接口变化**: 没有改 `CONTRACTS/`。运行产物现在会在 plan.json 顶层写 `audio`；edge 成功时每个 scene 写 `voiceover_audio`：`file/audio_duration/provider/voice`，字段名按 `video_project.schema.json`。
+
+**验证情况**:
+- 通过：`python tests/test_tts_generate.py`（FakeProvider 验证回填结构、命名、汇总统计、单段失败继续、none provider 跳过）
+- 通过：`python tests/test_llm_generate.py`
+- 通过：`python run_workflow.py --demo-assets --clean --skip-tts`
+- 通过：`python run_workflow.py --demo-assets --clean --tts-provider edge`，真实生成 3 个 mp3：`output/voiceover_audio/scene_01.mp3`、`scene_02.mp3`、`scene_03.mp3`
+- 通过：检查 `output/plan.json`，`audio.provider=edge`、`segments=3`、`total_audio_duration=20.386`；三段 scene 均有 `voiceover_audio`，duration 分别约 6.087 / 8.412 / 5.887 秒
+- 通过：`.\scripts\check_project.ps1`（脚本内 demo 使用 skip-tts，随后跑 LLM/TTS 单测）
+- 已安装到当前 bundled Python 环境：`edge-tts 7.2.8`
+
+**下一步建议**: Claude 复审 `tts_generate.py` 的失败边界、音频时长计算是否可接受、以及 `plan.json` 字段是否严格贴合契约。若对音频时长有更严格要求，建议在 T-003 review 中明确是否允许引入专门读 mp3 时长的依赖；否则 M3 先沿用 edge metadata 时长即可。
+
+## [2026-06-10 #7] Claude(PM) → Codex
+**改动**: M1 已提交 GitHub。完成渲染/TTS 选型调研并定案。产出 M2(TTS) 任务规格，升级契约，批准 edge-tts 依赖。Codex 可据此开工。
+**涉及文件**:
+- 升级 `CONTRACTS/video_project.schema.json`（scene 加 voiceover_audio，顶层加 audio 块）
+- 新增 `CONTRACTS/T-003_TTS_spec.md`（M2 施工图，Codex 必读）
+- 更新 DECISIONS.md（+ADR-008 渲染引擎、+ADR-009 TTS 选型、+ADR-010 契约升级与依赖批准；关闭 D-02/D-03）
+- 更新 TASKS.md（T-003 就绪）、STATE.md（当前焦点 M2）
+**为什么这么做**:
+- **M2 先用 edge-tts 免费试水**：用户要先零成本听 AI 中文口播效果，再决定是否接付费 TTS。edge-tts 调微软 Neural 语音(剪映同源技术体系)、免费、能被程序调用，是验证效果最快的方式。Provider 抽象为将来切阿里云 CosyVoice 预留(ADR-009)。
+- **契约先行(ADR-010)**：配音音频必须在数据结构里有明确落点(scene.voiceover_audio + 顶层 audio)，才能被 M3 渲染消费、M5 编辑器引用。这是 PM 该定的，不让 Codex 擅改契约。
+- **强调失败降级**：edge-tts 要联网，规格里要求无网络时能 --skip-tts 降级，不让主流程崩——保证离线也能跑通其他产物。
+- **预判最大的坑**：mp3 时长不好读，规格里给了三个方案(优先 edge-tts 的 WordBoundary)，让 Codex 拿不准时在 HANDOFF 提问而不是硬猜。
+**接口变化**: 升级了 video_project.schema.json(M2 字段)。这是 PM 主动升级并记入 ADR-010，Codex 按新字段产出即可，不要再改契约。
+**验证情况**: 仅文档/契约，未写代码。M1 代码未动，仍可运行。
+**下一步建议**: 把 T-003 规格交给 Codex。让它先读 PROTOCOL→STATE→本段→ADR-009/010→schema→T-003 spec，实现 `tts_generate.py`，完成后改 T-003 为 REVIEW 并在此写交接段，由 Claude 复审。
+**给 Codex 的话**: 你的施工图是 `CONTRACTS/T-003_TTS_spec.md`。音频时长那个坑(已知坑提示第一条)如果拿不准用哪个方案，先在 HANDOFF 提问，别硬猜。edge-tts 只是试水不是商用，代码注释要点明。
+
 ## [2026-06-10 #6] Claude(Reviewer) → 你(人类)
 **改动**: 复审 T-002 返修，**通过，T-002 → DONE**。M1 里程碑完成。
 **涉及文件**: 仅更新协作文档（TASKS.md T-002→DONE、STATE.md 当前焦点、本段交接）。代码未改动。

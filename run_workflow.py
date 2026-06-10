@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from llm_generate import LLMGenerationError, build_project_input, generate_video_content, legacy_plan_from_generation
+from tts_generate import TTSGenerationError, generate_voiceover_audio
 
 
 ROOT = Path(__file__).resolve().parent
@@ -931,6 +932,8 @@ def main() -> None:
     parser.add_argument("--refresh-demo-assets", action="store_true", help="Regenerate demo_*.png without touching real images.")
     parser.add_argument("--clean", action="store_true", help="Clear generated output before running.")
     parser.add_argument("--provider", default="mock", choices=["mock", "claude"], help="LLM provider for analysis/script/scenes.")
+    parser.add_argument("--tts-provider", default="edge", choices=["edge", "aliyun", "none"], help="TTS provider for voiceover audio.")
+    parser.add_argument("--skip-tts", action="store_true", help="Skip voiceover audio generation.")
     args = parser.parse_args()
 
     if args.clean and OUTPUT_DIR.exists():
@@ -963,6 +966,12 @@ def main() -> None:
     assets = copy_assets(images)
     write_srt(plan)
     write_voiceover_files(plan)
+    tts_provider = "none" if args.skip_tts else args.tts_provider
+    try:
+        audio = generate_voiceover_audio(plan["scenes"], config, OUTPUT_DIR, provider_name=tts_provider)
+    except TTSGenerationError as exc:
+        print(f"TTS warning: {exc}")
+        audio = {"provider": tts_provider, "voice": "", "segments": 0, "total_audio_duration": 0.0}
     write_html(plan, assets)
     write_markdown(plan, compliance)
     render_gif_preview(plan, assets)
@@ -977,6 +986,7 @@ def main() -> None:
                 "analysis": generated["analysis"],
                 "script": generated["script"],
                 "scenes": generated["scenes"],
+                "audio": audio,
                 "plan": plan,
                 "compliance": compliance,
             },
@@ -992,6 +1002,8 @@ def main() -> None:
     print(f"- {OUTPUT_DIR / 'preview.html'}")
     print(f"- {OUTPUT_DIR / 'plan.json'}")
     print(f"- {OUTPUT_DIR / 'voiceover.txt'}")
+    if audio.get("segments"):
+        print(f"- {OUTPUT_DIR / 'voiceover_audio'}")
 
 
 if __name__ == "__main__":

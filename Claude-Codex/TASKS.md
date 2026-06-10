@@ -5,9 +5,17 @@
 
 ## 进行中 / 待办
 
-（暂无进行中任务，等待你拍板下一步：提交 GitHub + 启动 M2 或 M3）
+（暂无进行中任务，等待你拍板：是否提交 M2 到 GitHub + 启动 M3）
 
 ## 已完成
+
+### T-003 TTS 配音模块 (M2)
+- **状态**: DONE（功能 + 健壮性两轮复审均通过，Claude 2026-06-10）
+- **负责**: Codex 实现 → Claude 审查
+- **健壮性返修复审**: edge 生成 3 个 mp3 后跑 aliyun(全失败，不带 --clean) → mp3 仍保留、plan.json audio 退化为 aliyun/segments=0 但不删文件；新增「失败不破坏已有产物」测试通过。修复目标达成。
+- **遗留给 M3 的已知前提**: 语音真实时长 ≠ 画面 duration（scene2 配音 8.4s > 画面 8s）。M3 渲染需按 audio_duration 微调画面节奏。
+- **产物**: `tts_generate.py`（含临时目录原子替换）、`tests/test_tts_generate.py`、接入 `run_workflow.py`、edge-tts 依赖。
+- **施工图**: `CONTRACTS/T-003_TTS_spec.md`；返修单 `CONTRACTS/T-003_review_fixes.md`
 
 ### T-002 LLM 生成模块 (M1)
 - **状态**: DONE（Claude 复审通过 2026-06-10）

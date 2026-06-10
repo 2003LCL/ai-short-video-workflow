@@ -123,6 +123,16 @@
           "caption": {"type": "string", "description": "字幕"},
           "voiceover": {"type": "string", "description": "口播稿"},
           "effect": {"type": "string", "description": "运镜效果，如 slow_zoom_in/pan_up/cut"},
+          "voiceover_audio": {
+            "type": "object",
+            "description": "【M2·TTS层产出】本镜口播配音音频。由 TTS 模块回填。",
+            "properties": {
+              "file": {"type": "string", "description": "音频文件相对路径，如 voiceover_audio/scene_01.mp3"},
+              "audio_duration": {"type": "number", "description": "实际配音时长(秒)，可用于后续按语音长度微调画面节奏(M3)"},
+              "provider": {"type": "string", "description": "生成该音频的 TTS provider，如 edge/aliyun"},
+              "voice": {"type": "string", "description": "使用的音色 id，如 zh-CN-XiaoxiaoNeural"}
+            }
+          },
           "edited": {"type": "boolean", "description": "审核层标记：人工是否改过这镜。增量重渲染只重跑 edited=true 的镜。"}
         }
       }
@@ -136,6 +146,18 @@
         "risk_level": {"type": "string", "enum": ["low", "medium", "high"]},
         "issues": {"type": "array", "items": {"type": "string"}},
         "note": {"type": "string"}
+      }
+    },
+
+    "audio": {
+      "type": "object",
+      "description": "【M2·TTS层产出】整条视频的配音汇总信息。",
+      "properties": {
+        "provider": {"type": "string", "description": "TTS provider：edge(免费试水) / aliyun / cosyvoice"},
+        "voice": {"type": "string", "description": "音色 id"},
+        "segments": {"type": "integer", "description": "成功生成的配音分段数"},
+        "total_audio_duration": {"type": "number", "description": "所有分段配音总时长(秒)"},
+        "full_track": {"type": "string", "description": "可选：拼接后的整条配音文件路径"}
       }
     },
 

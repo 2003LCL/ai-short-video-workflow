@@ -10,9 +10,9 @@
 
 ## 当前阶段
 
-**Stage 1 / M1 复审中**：已有本地 POC（run_workflow.py），
-现在已接入 `llm_generate.py` 的 Provider 抽象。默认 `mock` provider 可离线生成 analysis/script/scenes；
-`claude` provider 已按 review 修复改为 Anthropic tool_use 强制结构化输出，等待 Claude 复审与真实 key 验证。
+**Stage 1 / M2 审查中**：已有本地 POC（run_workflow.py），
+现在已接入 `llm_generate.py` 的 Provider 抽象和 `tts_generate.py` 的 TTS Provider 抽象。
+默认 `mock` LLM 可离线生成 analysis/script/scenes；TTS 默认 edge，可用 `--skip-tts` 降级跳过配音。
 
 ## 已有资产 (POC)
 
@@ -24,12 +24,15 @@
 
 ## 当前焦点
 
-**T-002 M1 已 DONE（Claude 复审通过 2026-06-10）。** LLM 生成模块完成：Provider 抽象（mock/claude）、
-Anthropic tool_use 强制结构化输出、retryable 重试边界、手写校验、代码分配时间轴、向后兼容旧 plan。
-三条验证基线全过、新增重试测试到位。
+**M1 已 DONE 并提交 GitHub（commit 7ca5cbf）。** 渲染引擎(ADR-008)、TTS(ADR-009) 选型已定。
 
-**等你拍板下一步**：(1) 是否提交 GitHub；(2) 启动 M2（接 CosyVoice TTS）还是 M3（FFmpeg/Remotion 出 MP4）。
-注：M3 的渲染引擎选型（D-02）尚未定，需 Claude 先做一次 2026 生态调研再开工。
+**T-003 / M2 已完整 DONE（功能 + 健壮性两轮复审均通过，Claude 2026-06-10）。** edge-tts 真实生成中文口播 mp3，
+plan.json 回填 audio + scene.voiceover_audio；「失败运行不破坏已有配音产物」已修复并验证。
+
+**等你拍板下一步**：(1) 是否把 M2 提交 GitHub；(2) 启动 M3（FFmpeg/MoviePy 出真 MP4，引擎已定 ADR-008）。
+
+**M3 必须处理的已知前提**：语音真实时长 ≠ 画面 duration（M2 实测 scene2 配音 8.4s > 画面 8s）。
+M3 应按 scene.voiceover_audio.audio_duration 微调画面节奏，否则配音会被画面切断。
 
 ## 关键约束
 
@@ -40,7 +43,7 @@ Anthropic tool_use 强制结构化输出、retryable 重试边界、手写校验
 ## 里程碑路线 (MVP 闭环)
 
 - [x] M1: 接真 LLM —— 输入信息 → 分析卖点/痛点/角度 → 生成脚本/分镜/口播/标题（结构化输出）✅ DONE
-- [ ] M2: 接 TTS —— voiceover_segments 真正出声 (CosyVoice)
+- [x] M2: 接 TTS —— voiceover_segments 真正出声（edge-tts 试水）✅ DONE
 - [ ] M3: FFmpeg/Remotion 出真 MP4（替代 GIF/HTML 预览）
 - [ ] M4: 素材打标签 + 自动匹配（产品护城河，最大瓶颈）
 - [ ] M5: 审核 Web 界面 + 增量重渲染（改一段只重跑一段）

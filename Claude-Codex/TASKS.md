@@ -5,15 +5,6 @@
 
 ## 进行中 / 待办
 
-### T-011 M5 第三期 — 网页离线投喂页（零 key 生成文案）
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
-- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
-- **目标**: 网页加「离线生成文案」区——展示提示词+一键复制+主流大模型网页链接(豆包/Kimi/通义/DeepSeek)，用户去任意 AI 网页版生成、把 JSON 贴回、解析校验后写进 plan.json。让没 key 的用户也能用真实大模型生成首版文案，零 key。
-- **复用**: `build_claude_instruction`(T-006 定稿 prompt) 生成提示词；`validate_generation`+`apply_timeline` 校验贴回的 JSON（别重写校验）；现有原子写 plan.json。JSON 宽容解析（剥 ```json/截取{…}）。
-- **数据来源**: 本期方案 A——基于现有 plan.json 的 input.shop+config 重新生成文案；无 plan.json 给清晰指引。
-- **不做**: 不调任何大模型 API（链接仅 `<a>` 跳转）、不改契约、不重写 T-006 prompt。
-- **施工图**: `CONTRACTS/T-011_offline_copy_web_spec.md`（验收标准在文末）。
-
 ### T-007 离线文案接入 — file provider 命令行版（次目标已完成，主目标可选）
 - **状态**: TODO（命令行版，优先级降低——T-011 网页版覆盖了主要场景；留作无网页时的备选）
 - **负责**: Claude 出规格 → Codex 实现 file provider → Claude 审查
@@ -21,7 +12,19 @@
 - **主目标待 Codex（可选）**: `--provider file` 命令行离线投喂——生成 output/llm_prompt.txt，喂任意 AI，JSON 存回 response 文件，重跑读回。零 key。
 - **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`
 
+### M4 素材打标签 + 自动匹配（护城河，下一个里程碑）
+- **状态**: TODO（M5 已完整收尾，按用户「先跑完 M5 再折回 M4」计划，下一步启动 M4，待 PM 出规格）
+- **说明**: 产品护城河/最大瓶颈。客户上传真实素材→视觉模型打标签→按脚本/分镜语义自动匹配镜头（ADR-004）。schema 的 assets[].tags、scenes[].asset_id 已为此预埋。
+
 ## 已完成
+
+### T-011 M5 第三期 — 网页离线投喂页（零 key 生成文案）
+- **状态**: DONE（Claude 复审通过 2026-06-12，含真实端到端验证）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **复审怎么做的（亲自跑真实服务，无虚报）**: 四套单测全过；起服务实测 `GET /api/offline/prompt` 返回的提示词含 T-006 全部锚点（copywriter 角色/copy_style/店铺信息/每场景推进规则，长度 6646，确认复用 build_claude_instruction 未另写）；`POST /api/offline/apply` 用「带说明文字 + ```json 代码块」包裹的 AI 式返回实测写入成功。
+- **核心点全部验证通过**: ① **JSON 宽容解析**——裸 JSON / ```json 代码块 / 带前后说明文字三种都正确提取，无 JSON 时清晰报错 ② **校验复用单一真相**——apply 走 validate_generation+apply_timeline+validate_timeline（copy.deepcopy 在副本上校验，失败不污染）③ **写盘正确**——新 analysis/script/scenes 写入、时间轴重算合法、顶层+legacy 双镜像同步、新 scenes 置 edited=false 且移除 voiceover_audio ④ **衔接 T-010**——rerender_audio_orders 改为「edited=true 或缺配音文件」都重配，实测离线新文案后返回 [1,2,3] 全段配音，闭环通。
+- **不改契约/不调 API**: 大模型链接仅 `<a target=_blank>` 跳转；schema 未动；未重写 T-006 prompt；仍绑 127.0.0.1、debug off。
+- **施工图**: `CONTRACTS/T-011_offline_copy_web_spec.md`
 
 ### T-010 M5 第二期 — 增量重渲染（改完文案重新出片）
 - **状态**: DONE（Claude 复审通过 2026-06-12，含真实联网 edge TTS 端到端验证）

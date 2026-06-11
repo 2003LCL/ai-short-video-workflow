@@ -3,6 +3,62 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-12 #32] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-011 / M5 第三期网页离线投喂页，**通过，T-011 → DONE**。**M5 三期全部完成**，下一步折回 M4。
+**涉及文件**: 仅更新协作文档（TASKS.md T-011→DONE、STATE.md M5 整体 DONE、本段）。代码未改。
+**复审怎么做的（亲起真实服务实测，无虚报；bundled python 3.12）**:
+- 四套单测全过。
+- `GET /api/offline/prompt`：实测返回提示词含 T-006 全部锚点（copywriter 角色 / copy_style / 店铺信息 / 每场景推进规则 ADVANCE，长度 6646）——确认复用 build_claude_instruction，没另写 prompt。
+- `POST /api/offline/apply`：用「带说明文字 + ```json 代码块」包裹的 AI 式返回实测，成功解析写入。
+- **JSON 宽容解析**：单测验证裸 JSON / ```json 代码块 / 带前后说明文字三种都正确提取，无 JSON 清晰报错。
+- **校验单一真相**：apply 走 validate_generation+apply_timeline+validate_timeline（copy.deepcopy 副本校验，失败不污染），没在 web_app 重写校验。
+- **写盘正确**：落盘 plan.json 的 analysis/script/scenes 更新、时间轴 0-8/8-16/16-24 合法、顶层+legacy 双镜像同步、新 scenes edited=false 且无 voiceover_audio。
+- **衔接 T-010 验证**：rerender_audio_orders 改为「edited=true 或缺配音文件」都重配；实测离线新文案后返回 [1,2,3] 全段——离线生成后直接点重新生成视频即可全段配音。**这个改动动了已 DONE 的 T-010，但没破坏其增量语义**（未改且有配音的段仍跳过），是合理增强。
+**为什么通过**: Codex 点名要审的「保留旧 audio/renders 但提示重新生成」+ JSON 宽容 + 校验复用 + T-010 衔接全部经得起真跑；不调任何大模型 API（链接仅 `<a target=_blank>` 跳转）；契约未动；安全（127.0.0.1、debug off、原子写）。
+**接口变化**: 无（复用现有函数 + plan.json 字段）。新增本地端点 GET /api/offline/prompt、POST /api/offline/apply。
+**M5 完整收尾**: 三期闭环——双击启动 →（可选）离线零 key 生成文案 → 改文案存回 → 重新生成视频出片。店主级非技术用户全程可用。
+**下一步建议（等你拍板）**:
+1. 把 T-011 代码（web_app.py offline API、tests）提交 GitHub。
+2. **折回 M4**（素材打标签+自动匹配，产品护城河/最大瓶颈，ADR-004）——这是你定位里反复强调的壁垒。需 PM 先做调研+架构设计（视觉打标签模型选型、匹配算法），再出规格。
+**给你的提醒**: 你现在本地双击 start_editor.bat，能体验完整的「离线生成文案→改→重新出片」闭环了。
+
+## [2026-06-12 #31] Codex(Dev) -> Claude(Reviewer)
+**Change**: Implemented T-011 / M5 phase 3 offline copy handoff page. The local web editor now has an offline-copy section plus two APIs: `GET /api/offline/prompt` and `POST /api/offline/apply`. T-011 is now REVIEW.
+
+**Files touched**:
+- Updated `web_app.py`
+- Updated `tests/test_web_app.py`
+- Updated `Claude-Codex/STATE.md`, `Claude-Codex/TASKS.md`, and this handoff entry
+- Did not modify `CONTRACTS/`
+
+**Why this design**:
+- Prompt generation uses scheme A from the spec: current `output/plan.json` -> `input.shop + config` -> `llm_generate.build_project_input(...)` -> `llm_generate.build_claude_instruction(...)`. No API call is made and T-006 prompt text is not rewritten.
+- Apply reuses the LLM truth chain instead of duplicating validation in `web_app.py`: `validate_generation` -> `apply_timeline` -> `validate_timeline`. The only web-app-specific layer is parsing user-pasted text and mapping validation errors into API JSON.
+- JSON parsing is intentionally tolerant: direct `json.loads`, then fenced ```json blocks, then first `{` through last `}`. This matches pasted output from model websites.
+- Successful apply only replaces `analysis`, `script`, `scenes`, legacy `plan`, and `status`. It preserves `input`, `config`, `audio`, `renders`, `compliance`, and other existing fields. Text sidecars are synced immediately so the review editor shows the new copy.
+- New generated scenes deliberately drop any `voiceover_audio` and set `edited=false`. This avoids trusting model-returned audio metadata and keeps the meaning clean: these are machine-generated scenes, not manually edited scenes.
+- To connect T-011 with T-010, `rerender_project` now sends a scene to TTS if either `edited=true` OR its `voiceover_audio` file is missing. Therefore after offline apply, clicking rerender generates audio for all new scenes even though `edited=false`.
+
+**Interface changes**:
+- Added local API `GET /api/offline/prompt`.
+- Added local API `POST /api/offline/apply`.
+- Added front-end section "??????" with a read-only prompt box, copy button, model website links (Doubao/Kimi/Qwen/DeepSeek), pasted-result textarea, and apply button.
+- Still local only: 127.0.0.1/debug off. Model links are normal `<a target="_blank">` links only; no provider API is called.
+
+**Validation**:
+- Passed: `python tests/test_llm_generate.py`
+- Passed: `python tests/test_tts_generate.py`
+- Passed: `python tests/test_render_mp4.py`
+- Passed: `python tests/test_web_app.py`
+- Passed: `./scripts/check_project.ps1` (it refreshed generated `output/plan.json` timestamps; I restored that unrelated generated diff afterward).
+- New web tests cover: prompt contains T-006 anchors; missing plan gives clear guidance; bare JSON / fenced JSON / explanatory-wrapper JSON all parse; invalid generation is rejected without saving; offline apply updates plan and text sidecars; rerender fully TTS-generates scenes with missing `voiceover_audio`.
+
+**Reviewer focus**:
+1. Check prompt generation really uses `build_claude_instruction` and does not drift from T-006.
+2. Check apply validation has a single source of truth through `llm_generate` helpers.
+3. Check whether preserving stale `audio/renders` while telling the user to rerender is acceptable. I preserved them to avoid deleting old usable artifacts before a new render succeeds.
+4. Check T-010 bridge: scenes missing `voiceover_audio` are now included in `only_orders`, so offline-generated scenes can be rerendered without marking all scenes edited.
+
 ## [2026-06-12 #30] Claude(PM) → Codex
 **改动**: T-010 已提交 GitHub（c6e4d12）。用户定「先跑完 M5 再折回 M4」，启动 M5 第三期，出 T-011 网页离线投喂页规格。
 **涉及文件**:

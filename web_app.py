@@ -1,5 +1,7 @@
 import json
 import os
+import copy
+import re
 import shutil
 import tempfile
 import threading
@@ -10,6 +12,14 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template_string, request
 
 import run_workflow
+from llm_generate import (
+    apply_timeline,
+    build_claude_instruction,
+    build_project_input,
+    legacy_plan_from_generation,
+    validate_generation,
+    validate_timeline,
+)
 from render_mp4 import MP4RenderError, render_mp4
 from tts_generate import TTSGenerationError, generate_voiceover_audio
 
@@ -271,6 +281,25 @@ def upsert_render_entry(renders: list[dict], entry: dict) -> list[dict]:
     return kept
 
 
+def scene_needs_audio(scene: dict, output_dir: Path) -> bool:
+    audio = scene.get("voiceover_audio") or {}
+    rel_file = str(audio.get("file") or "").strip()
+    return not rel_file or not (output_dir / rel_file).exists()
+
+
+def rerender_audio_orders(project: dict, output_dir: Path) -> set[int]:
+    orders = set()
+    legacy_plan = get_legacy_plan(project)
+    for idx, scene in enumerate(legacy_plan["scenes"], start=1):
+        try:
+            order = int(scene.get("order", idx))
+        except (TypeError, ValueError):
+            order = idx
+        if scene.get("edited") is True or scene_needs_audio(scene, output_dir):
+            orders.add(order)
+    return orders
+
+
 def backup_audio_files(scenes: list[dict], orders: set[int], output_dir: Path) -> tuple[Path, list[dict]]:
     backup_dir = Path(tempfile.mkdtemp(prefix="voiceover_audio_backup_", dir=output_dir))
     records = []
@@ -333,13 +362,9 @@ def rerender_project(
 ) -> tuple[dict, dict]:
     started = time.perf_counter()
     legacy_plan = get_legacy_plan(project)
-    edited_orders = {
-        int(scene.get("order"))
-        for scene in (project.get("scenes") or [])
-        if scene.get("edited") is True and isinstance(scene.get("order"), int)
-    }
+    audio_orders = rerender_audio_orders(project, output_dir)
     tts_provider_name = str((project.get("config") or {}).get("tts_provider") or tts_provider_name)
-    audio_backup_dir, audio_backup_records = backup_audio_files(legacy_plan["scenes"], edited_orders, output_dir)
+    audio_backup_dir, audio_backup_records = backup_audio_files(legacy_plan["scenes"], audio_orders, output_dir)
     video_path = output_dir / "video.mp4"
     video_backup_path, video_existed = backup_file(video_path)
     success = False
@@ -350,7 +375,7 @@ def rerender_project(
             output_dir,
             provider_name=tts_provider_name,
             provider=tts_provider,
-            only_orders=edited_orders,
+            only_orders=audio_orders,
         )
         if audio.get("warnings"):
             raise TTSGenerationError("; ".join(str(item) for item in audio["warnings"]))
@@ -364,13 +389,13 @@ def rerender_project(
             run_workflow.ASSETS_DIR = original_assets_dir
 
         sync_text_outputs(project, output_dir)
-        clear_edited_flags(project, edited_orders)
+        clear_edited_flags(project, audio_orders)
         project["audio"] = audio
         project["renders"] = upsert_render_entry(project.get("renders") or [], mp4_entry)
         project["status"] = "rerendered"
         success = True
         return project, {
-            "edited_orders": sorted(edited_orders),
+            "edited_orders": sorted(audio_orders),
             "mp4": mp4_entry,
             "audio": audio,
             "elapsed_seconds": round(time.perf_counter() - started, 3),
@@ -388,6 +413,94 @@ def rerender_project(
             restore_audio_files(audio_backup_dir, audio_backup_records)
             restore_file(video_path, video_backup_path, video_existed)
 
+def offline_config_from_project(project: dict) -> dict:
+    shop = (project.get("input") or {}).get("shop") or {}
+    config = project.get("config") or {}
+    legacy_plan = project.get("plan") or {}
+    merged = {
+        "project_id": project.get("project_id", "local-demo"),
+        "shop_name": shop.get("shop_name") or legacy_plan.get("shop_name", ""),
+        "industry": shop.get("industry") or legacy_plan.get("industry", ""),
+        "city_area": shop.get("city_area", ""),
+        "topic": shop.get("topic") or legacy_plan.get("topic", ""),
+        "main_offer": shop.get("main_offer", ""),
+        "target_customer": shop.get("target_customer", ""),
+        "tone": shop.get("tone", ""),
+        "cta": shop.get("cta", ""),
+        "aspect_ratio": config.get("aspect_ratio", legacy_plan.get("aspect_ratio", "9:16")),
+        "visual_style": config.get("visual_style", legacy_plan.get("visual_style", "premium_luxe")),
+        "duration_seconds": int(config.get("duration_seconds") or legacy_plan.get("duration_seconds") or 24),
+        "platform": config.get("platform", legacy_plan.get("platform", "generic")),
+        "compliance_mode": config.get("compliance_mode", ""),
+        "copy_style": str(config.get("copy_style", "")),
+    }
+    missing = [key for key in ("shop_name", "industry") if not str(merged.get(key, "")).strip()]
+    if missing:
+        raise ValueError("plan.json 缺少店铺名称或行业，请先用 run_workflow.py 生成一次基础项目。")
+    return merged
+
+
+def build_offline_project_input(project: dict) -> dict:
+    config = offline_config_from_project(project)
+    project_input = build_project_input(
+        config,
+        assets=(project.get("input") or {}).get("assets") or [],
+        sources=(project.get("input") or {}).get("sources") or [],
+    )
+    project_input["project_id"] = str(project.get("project_id") or project_input["project_id"])
+    return project_input
+
+
+def build_offline_prompt(project: dict) -> tuple[str, dict]:
+    project_input = build_offline_project_input(project)
+    prompt_json = json.dumps(project_input, ensure_ascii=False, indent=2)
+    return build_claude_instruction(prompt_json, None), project_input
+
+
+def parse_offline_generation_text(text: str) -> dict:
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("请先粘贴 AI 返回的 JSON 文案。")
+    raw = text.strip()
+    candidates = [raw]
+    candidates.extend(match.group(1).strip() for match in re.finditer(r"```(?:json)?\s*(.*?)```", raw, re.I | re.S))
+    first = raw.find("{")
+    last = raw.rfind("}")
+    if first != -1 and last != -1 and last > first:
+        candidates.append(raw[first : last + 1])
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(parsed, dict):
+            return parsed
+    raise ValueError("没有识别到合法 JSON。可以直接粘贴 { ... }，或粘贴 ```json 代码块。")
+
+
+def validate_offline_generation(candidate: dict, project_input: dict) -> tuple[dict | None, dict]:
+    working = copy.deepcopy(candidate)
+    errors = validate_generation(working, project_input)
+    if errors:
+        return None, {"generation": "AI 输出字段不完整或格式不对：" + "；".join(errors)}
+    duration = int(project_input["config"]["duration_seconds"])
+    apply_timeline(working, duration)
+    timeline_errors = validate_timeline(working["scenes"], duration)
+    if timeline_errors:
+        return None, {"timeline": "AI 输出的分镜时间轴不合法：" + "；".join(timeline_errors)}
+    for scene in working["scenes"]:
+        scene["edited"] = False
+        scene.pop("voiceover_audio", None)
+    return working, {}
+
+
+def apply_offline_generation(project: dict, generated: dict, project_input: dict) -> dict:
+    config = offline_config_from_project(project)
+    project["analysis"] = generated["analysis"]
+    project["script"] = generated["script"]
+    project["scenes"] = copy.deepcopy(generated["scenes"])
+    project["plan"] = legacy_plan_from_generation(config, copy.deepcopy(generated))
+    project["status"] = "generated"
+    return project
 
 
 def apply_copy_update(project: dict, payload: dict) -> tuple[dict | None, dict]:
@@ -485,6 +598,62 @@ def api_rerender_project():
             "project": extract_editable_project(updated),
             "rerender": result,
             "message": "视频已重新生成，改过的段落已经重新配音，MP4 已更新。",
+        }
+    )
+
+
+@app.get("/api/offline/prompt")
+def api_offline_prompt():
+    try:
+        project = load_project(PLAN_PATH)
+        prompt, project_input = build_offline_prompt(project)
+    except FileNotFoundError:
+        return api_error("请先运行 run_workflow.py 生成 output/plan.json，再使用离线生成文案。", 404)
+    except (ValueError, TypeError) as exc:
+        return api_error(str(exc), 500)
+    return jsonify(
+        {
+            "ok": True,
+            "prompt": prompt,
+            "project_input": project_input,
+            "message": "提示词已生成。复制后粘贴到任意大模型网页，让它只返回 JSON。",
+        }
+    )
+
+
+@app.post("/api/offline/apply")
+def api_offline_apply():
+    try:
+        project = load_project(PLAN_PATH)
+    except FileNotFoundError:
+        return api_error("请先运行 run_workflow.py 生成 output/plan.json，再粘贴 AI 输出。", 404)
+    except ValueError as exc:
+        return api_error(str(exc), 500)
+
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text") or payload.get("content") or payload.get("json") or ""
+    try:
+        project_input = build_offline_project_input(project)
+        candidate = parse_offline_generation_text(text)
+        generated, errors = validate_offline_generation(candidate, project_input)
+    except ValueError as exc:
+        return api_error(str(exc), 400)
+    if errors:
+        return api_error("AI 输出还不能应用，请检查字段。", 400, errors)
+
+    assert generated is not None
+    try:
+        updated = apply_offline_generation(project, generated, project_input)
+        save_project(updated, PLAN_PATH)
+        sync_text_outputs(updated, OUTPUT_DIR)
+    except (ValueError, TypeError) as exc:
+        return api_error(str(exc), 500)
+
+    return jsonify(
+        {
+            "ok": True,
+            "project": extract_editable_project(updated),
+            "message": "文案已生成并写入项目，可去审改或重新生成视频。旧配音和旧视频已过时，请重新生成视频。",
         }
     )
 
@@ -628,6 +797,32 @@ INDEX_HTML = r"""<!doctype html>
     button:disabled { opacity: .6; cursor: wait; }
     .button-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
     .secondary { background: #334155; }
+    .link-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+    .model-link {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      padding: 7px 11px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: #0f766e;
+      background: #f8fafc;
+      font-weight: 700;
+      text-decoration: none;
+    }
+    .offline-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .prompt-box { min-height: 210px; font-family: Consolas, "Microsoft YaHei", monospace; }
+    .paste-box { min-height: 180px; font-family: Consolas, "Microsoft YaHei", monospace; }
     .notice { color: var(--muted); font-size: 14px; }
     .status { font-weight: 700; }
     .error { color: var(--danger); }
@@ -638,6 +833,7 @@ INDEX_HTML = r"""<!doctype html>
       .grid { grid-template-columns: 1fr; }
       .actions { align-items: stretch; flex-direction: column; }
       .button-row { flex-direction: column; }
+      .offline-actions { flex-direction: column; }
       button { width: 100%; }
     }
   </style>
@@ -652,6 +848,28 @@ INDEX_HTML = r"""<!doctype html>
     </div>
   </header>
   <main>
+    <section>
+      <h2>离线生成文案</h2>
+      <div class="notice">复制提示词到任意大模型网页，拿到 JSON 后粘贴回来应用。</div>
+      <div class="link-row">
+        <a class="model-link" href="https://www.doubao.com/chat/" target="_blank" rel="noopener noreferrer">豆包</a>
+        <a class="model-link" href="https://www.kimi.com/" target="_blank" rel="noopener noreferrer">Kimi</a>
+        <a class="model-link" href="https://chat.qwen.ai/" target="_blank" rel="noopener noreferrer">通义</a>
+        <a class="model-link" href="https://chat.deepseek.com/" target="_blank" rel="noopener noreferrer">DeepSeek</a>
+      </div>
+      <label for="offlinePrompt">给大模型的提示词</label>
+      <textarea id="offlinePrompt" class="prompt-box" readonly></textarea>
+      <div class="offline-actions">
+        <button id="loadPromptBtn" class="secondary" type="button">生成提示词</button>
+        <button id="copyPromptBtn" type="button">复制提示词</button>
+      </div>
+      <div style="height:14px"></div>
+      <label for="offlineResult">粘贴 AI 返回的 JSON</label>
+      <textarea id="offlineResult" class="paste-box"></textarea>
+      <div class="offline-actions">
+        <button id="applyOfflineBtn" type="button">应用文案</button>
+      </div>
+    </section>
     <section>
       <h2>整体文案</h2>
       <div class="grid">
@@ -707,6 +925,11 @@ INDEX_HTML = r"""<!doctype html>
       status: document.getElementById('status'),
       saveBtn: document.getElementById('saveBtn'),
       rerenderBtn: document.getElementById('rerenderBtn'),
+      offlinePrompt: document.getElementById('offlinePrompt'),
+      offlineResult: document.getElementById('offlineResult'),
+      loadPromptBtn: document.getElementById('loadPromptBtn'),
+      copyPromptBtn: document.getElementById('copyPromptBtn'),
+      applyOfflineBtn: document.getElementById('applyOfflineBtn'),
     };
     let currentProject = null;
 
@@ -768,6 +991,7 @@ INDEX_HTML = r"""<!doctype html>
       }
       renderProject(data.project);
       setStatus('项目已读取', 'ok');
+      loadOfflinePrompt();
     }
 
     function collectPayload() {
@@ -831,8 +1055,68 @@ INDEX_HTML = r"""<!doctype html>
       }
     }
 
+    async function loadOfflinePrompt() {
+      els.loadPromptBtn.disabled = true;
+      try {
+        const res = await fetch('/api/offline/prompt');
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          els.offlinePrompt.value = data.error || '提示词生成失败';
+          return;
+        }
+        els.offlinePrompt.value = data.prompt || '';
+      } finally {
+        els.loadPromptBtn.disabled = false;
+      }
+    }
+
+    async function copyOfflinePrompt() {
+      const text = els.offlinePrompt.value || '';
+      if (!text) {
+        setStatus('请先生成提示词', 'error');
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(text);
+        setStatus('提示词已复制', 'ok');
+      } catch (err) {
+        els.offlinePrompt.focus();
+        els.offlinePrompt.select();
+        setStatus('已选中提示词，请手动复制', 'ok');
+      }
+    }
+
+    async function applyOfflineCopy() {
+      els.applyOfflineBtn.disabled = true;
+      els.saveBtn.disabled = true;
+      els.rerenderBtn.disabled = true;
+      setStatus('正在应用 AI 文案...', '');
+      try {
+        const res = await fetch('/api/offline/apply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: els.offlineResult.value }),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const detail = data.errors ? Object.values(data.errors)[0] : '';
+          setStatus((data.error || '应用失败') + (detail ? ' ' + detail : ''), 'error');
+          return;
+        }
+        renderProject(data.project);
+        setStatus(data.message || '文案已应用，可去审改或重新生成视频', 'ok');
+      } finally {
+        els.applyOfflineBtn.disabled = false;
+        els.saveBtn.disabled = false;
+        els.rerenderBtn.disabled = false;
+      }
+    }
+
     els.saveBtn.addEventListener('click', saveProject);
     els.rerenderBtn.addEventListener('click', rerenderProject);
+    els.loadPromptBtn.addEventListener('click', loadOfflinePrompt);
+    els.copyPromptBtn.addEventListener('click', copyOfflinePrompt);
+    els.applyOfflineBtn.addEventListener('click', applyOfflineCopy);
     loadProject();
   </script>
 </body>

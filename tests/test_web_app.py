@@ -131,6 +131,48 @@ def valid_payload() -> dict:
     }
 
 
+def valid_generation() -> dict:
+    return {
+        "analysis": {
+            "selling_points": ["流程讲清楚", "沟通透明"],
+            "pain_points": ["第一次不了解流程"],
+            "hook_angles": ["先讲清楚再决定"],
+            "recommended_structure": "钩子-流程-信任-行动",
+            "reasoning": "用流程透明降低第一次到店的顾虑。",
+        },
+        "script": {
+            "topic": "新生成主题",
+            "cover_text": "新生成封面",
+            "titles": ["新标题一", "新标题二"],
+            "post_copy": "新生成发布文案",
+            "bgm_suggestion": "干净轻节奏",
+        },
+        "scenes": [
+            {
+                "order": 1,
+                "asset_type": "门店环境",
+                "caption": "第一次来先看流程",
+                "voiceover": "第一次来不用急着决定，先把流程和感受问清楚。",
+                "effect": "slow_zoom_in",
+            },
+            {
+                "order": 2,
+                "asset_type": "服务细节",
+                "caption": "先检查再沟通",
+                "voiceover": "开始前会先做基础检查，再告诉你接下来每一步怎么做。",
+                "effect": "pan_up",
+            },
+            {
+                "order": 3,
+                "asset_type": "行动引导",
+                "caption": "有疑问先咨询",
+                "voiceover": "如果还有不确定的地方，可以先咨询清楚再安排。",
+                "effect": "slow_zoom_out",
+            },
+        ],
+    }
+
+
 def test_get_project_returns_editable_copy():
     with tempfile.TemporaryDirectory() as tmp:
         client = client_for(Path(tmp), sample_project())
@@ -252,6 +294,119 @@ def test_browser_auto_open_env_switch():
             os.environ["AI_VIDEO_NO_BROWSER"] = original
 
 
+def test_offline_prompt_contains_t006_anchors():
+    with tempfile.TemporaryDirectory() as tmp:
+        client = client_for(Path(tmp), sample_project())
+
+        response = client.get("/api/offline/prompt")
+        data = response.get_json()
+
+        assert response.status_code == 200
+        assert data["ok"] is True
+        assert "Use the emit_video_content tool" in data["prompt"]
+        assert "Selected copy_style" in data["prompt"]
+        assert "星河" in data["prompt"] or "鏄熸渤" in data["prompt"]
+
+
+def test_offline_prompt_missing_plan_has_clear_guidance():
+    with tempfile.TemporaryDirectory() as tmp:
+        client = client_for(Path(tmp))
+
+        response = client.get("/api/offline/prompt")
+        data = response.get_json()
+
+        assert response.status_code == 404
+        assert data["ok"] is False
+        assert "run_workflow.py" in data["error"]
+
+
+def test_parse_offline_generation_accepts_bare_json_code_block_and_wrapped_text():
+    generation = valid_generation()
+    raw = json.dumps(generation, ensure_ascii=False)
+    code_block = "```json\n" + raw + "\n```"
+    wrapped = "下面是结果：\n" + raw + "\n请使用。"
+
+    assert web_app.parse_offline_generation_text(raw)["script"]["topic"] == "新生成主题"
+    assert web_app.parse_offline_generation_text(code_block)["script"]["topic"] == "新生成主题"
+    assert web_app.parse_offline_generation_text(wrapped)["script"]["topic"] == "新生成主题"
+
+
+def test_offline_apply_accepts_three_json_wrappers_and_updates_plan():
+    wrappers = [
+        lambda raw: raw,
+        lambda raw: "```json\n" + raw + "\n```",
+        lambda raw: "AI 生成如下：\n" + raw + "\n可以直接使用。",
+    ]
+    for wrapper in wrappers:
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            plan_path = configure_temp_project(base, sample_project())
+            client = web_app.app.test_client()
+            raw = json.dumps(valid_generation(), ensure_ascii=False)
+
+            response = client.post("/api/offline/apply", json={"text": wrapper(raw)})
+            data = response.get_json()
+            saved = read_project(plan_path)
+
+            assert response.status_code == 200
+            assert data["ok"] is True
+            assert saved["analysis"]["selling_points"] == ["流程讲清楚", "沟通透明"]
+            assert saved["script"]["topic"] == "新生成主题"
+            assert saved["scenes"][0]["start"] == 0
+            assert sum(scene["duration"] for scene in saved["scenes"]) == saved["config"]["duration_seconds"]
+            assert saved["plan"]["scenes"][0]["caption"] == "第一次来先看流程"
+            assert all("voiceover_audio" not in scene for scene in saved["scenes"])
+            assert all(scene.get("edited") is False for scene in saved["scenes"])
+            assert "新生成发布文案" in (base / "video_plan.md").read_text(encoding="utf-8")
+
+
+def test_offline_apply_rejects_invalid_generation_without_writing_plan():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        original = sample_project()
+        plan_path = configure_temp_project(base, original)
+        client = web_app.app.test_client()
+        invalid = valid_generation()
+        invalid.pop("script")
+
+        response = client.post("/api/offline/apply", json={"text": json.dumps(invalid, ensure_ascii=False)})
+        data = response.get_json()
+        saved = read_project(plan_path)
+
+        assert response.status_code == 400
+        assert data["ok"] is False
+        assert "generation" in data["errors"]
+        assert saved["script"] == original["script"]
+
+
+def test_rerender_project_generates_audio_for_scenes_missing_voiceover_audio():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        for scenes in (project["scenes"], project["plan"]["scenes"]):
+            for scene in scenes:
+                scene.pop("voiceover_audio", None)
+                scene["edited"] = False
+
+        def fake_mp4_renderer(plan, assets, output_dir, frame_renderer):
+            (output_dir / "video.mp4").write_bytes(b"new video")
+            return {"platform": "generic", "aspect_ratio": "9:16", "kind": "mp4", "file": "video.mp4"}
+
+        provider = FakeProvider()
+        updated, result = web_app.rerender_project(
+            project,
+            base,
+            tts_provider_name="fake",
+            tts_provider=provider,
+            mp4_renderer=fake_mp4_renderer,
+        )
+
+        assert provider.calls == [1, 2]
+        assert result["edited_orders"] == [1, 2]
+        assert updated["audio"]["segments"] == 2
+        assert updated["scenes"][0]["voiceover_audio"]["file"] == "voiceover_audio/scene_01.mp3"
+
+
 def test_rerender_project_incremental_audio_then_clears_edited_on_success():
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -286,7 +441,7 @@ def test_rerender_project_incremental_audio_then_clears_edited_on_success():
         assert updated["audio"]["segments"] == 2
         assert updated["renders"][-1]["kind"] == "mp4"
         assert result["edited_orders"] == [1]
-        assert "鍘熷瓧骞曚竴" in (base / "captions.srt").read_text(encoding="utf-8")
+        assert updated["plan"]["scenes"][0]["caption"] in (base / "captions.srt").read_text(encoding="utf-8")
         assert (base / "video.mp4").read_bytes() == b"new video"
 
 
@@ -430,4 +585,15 @@ if __name__ == "__main__":
     test_post_copy_rejects_empty_copy_fields()
     test_post_copy_ignores_timeline_mutation_attempts()
     test_browser_auto_open_env_switch()
+    test_offline_prompt_contains_t006_anchors()
+    test_offline_prompt_missing_plan_has_clear_guidance()
+    test_parse_offline_generation_accepts_bare_json_code_block_and_wrapped_text()
+    test_offline_apply_accepts_three_json_wrappers_and_updates_plan()
+    test_offline_apply_rejects_invalid_generation_without_writing_plan()
+    test_rerender_project_generates_audio_for_scenes_missing_voiceover_audio()
+    test_rerender_project_incremental_audio_then_clears_edited_on_success()
+    test_rerender_project_mp4_failure_restores_old_outputs_and_keeps_edited()
+    test_rerender_project_tts_failure_restores_old_outputs_and_keeps_edited()
+    test_rerender_api_returns_failure_without_saving_plan_when_renderer_fails()
+    test_rerender_api_saves_successful_result()
     print("web_app tests passed")

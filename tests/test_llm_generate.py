@@ -4,7 +4,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import llm_generate
-from llm_generate import ClaudeProvider, LLMGenerationError, build_project_input, generate_video_content, validate_generation
+from llm_generate import (
+    COPY_STYLE_PUNCHY,
+    COPY_STYLE_TRUST,
+    ClaudeProvider,
+    LLMGenerationError,
+    build_claude_instruction,
+    build_project_input,
+    generate_video_content,
+    resolve_copy_style,
+    validate_generation,
+)
 
 
 def sample_config():
@@ -116,6 +126,64 @@ def test_non_retryable_provider_error_does_not_retry(monkeypatch=None):
     assert provider.calls == 1
 
 
+def test_copy_style_explicit_overrides_industry():
+    assert resolve_copy_style({"copy_style": COPY_STYLE_PUNCHY, "industry": "口腔门诊"}) == COPY_STYLE_PUNCHY
+    assert resolve_copy_style({"copy_style": COPY_STYLE_TRUST, "industry": "火锅餐饮"}) == COPY_STYLE_TRUST
+
+
+def test_copy_style_auto_industry_rules_and_fallback():
+    assert resolve_copy_style({}, {"industry": "口腔门诊"}) == COPY_STYLE_TRUST
+    assert resolve_copy_style({}, {"industry": "少儿培训"}) == COPY_STYLE_TRUST
+    assert resolve_copy_style({}, {"industry": "火锅餐饮"}) == COPY_STYLE_PUNCHY
+    assert resolve_copy_style({}, {"industry": "未知行业"}) == COPY_STYLE_PUNCHY
+
+
+def test_build_project_input_passes_copy_style():
+    config = sample_config()
+    config["copy_style"] = COPY_STYLE_PUNCHY
+    project_input = build_project_input(config, assets=sample_assets())
+    assert project_input["config"]["copy_style"] == COPY_STYLE_PUNCHY
+
+
+def test_mock_provider_styles_are_distinct_and_valid():
+    trust_config = sample_config()
+    trust_config["copy_style"] = COPY_STYLE_TRUST
+    punchy_config = sample_config()
+    punchy_config["industry"] = "火锅餐饮"
+    punchy_config["copy_style"] = COPY_STYLE_PUNCHY
+    punchy_config["compliance_mode"] = ""
+
+    trust_input = build_project_input(trust_config, assets=sample_assets())
+    punchy_input = build_project_input(punchy_config, assets=sample_assets())
+    trust_generated = generate_video_content(trust_input, provider_name="mock")
+    punchy_generated = generate_video_content(punchy_input, provider_name="mock")
+
+    assert not validate_generation(trust_generated, trust_input)
+    assert not validate_generation(punchy_generated, punchy_input)
+    assert "流程" in trust_generated["analysis"]["recommended_structure"]
+    assert "强钩子" in punchy_generated["analysis"]["recommended_structure"]
+    assert trust_generated["scenes"][0]["voiceover"] != punchy_generated["scenes"][0]["voiceover"]
+    assert trust_generated["script"]["post_copy"] != punchy_generated["script"]["post_copy"]
+
+
+def test_claude_instruction_injects_copy_style_rules():
+    trust_input = build_project_input(sample_config(), assets=sample_assets())
+    trust_instruction = build_claude_instruction(__import__("json").dumps(trust_input, ensure_ascii=False), None)
+    assert "Selected copy_style: professional_trust" in trust_instruction
+    assert "Restraint here is a feature" in trust_instruction
+    assert "The compelling copy is YOUR job" in trust_instruction
+    assert "Use the emit_video_content tool" in trust_instruction
+
+    punchy_config = sample_config()
+    punchy_config["industry"] = "餐饮小吃"
+    punchy_config["copy_style"] = ""
+    punchy_input = build_project_input(punchy_config, assets=sample_assets())
+    punchy_instruction = build_claude_instruction(__import__("json").dumps(punchy_input, ensure_ascii=False), None)
+    assert "Selected copy_style: punchy_local" in punchy_instruction
+    assert "The first 3 seconds are life or death" in punchy_instruction
+    assert "Creativity is in HOW you say it" in punchy_instruction
+
+
 if __name__ == "__main__":
     test_mock_provider_required_fields()
     test_mock_provider_timeline_is_contiguous()
@@ -123,4 +191,9 @@ if __name__ == "__main__":
     test_claude_provider_default_model()
     test_retryable_provider_error_retries()
     test_non_retryable_provider_error_does_not_retry()
+    test_copy_style_explicit_overrides_industry()
+    test_copy_style_auto_industry_rules_and_fallback()
+    test_build_project_input_passes_copy_style()
+    test_mock_provider_styles_are_distinct_and_valid()
+    test_claude_instruction_injects_copy_style_rules()
     print("llm_generate tests passed")

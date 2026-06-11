@@ -5,16 +5,35 @@
 
 ## 进行中 / 待办
 
-### T-006 文案质量专项 — prompt 工程 + 两套可切换风格 (M1 回炉)
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
-- **负责**: Claude 出规格 → Codex 实现 → Claude 复审（含真实 Claude 生成对比）
-- **目标**: 重写 `build_claude_instruction` 的 prompt，从「只讲 JSON 格式」升级为「真正会写带货文案」。这是产品核心竞争力（用户多次强调文案才是视频好坏的关键）。
-- **两套风格**: `punchy_local`(下沉口语强钩子) / `professional_trust`(专业克制信任感)，按 `copy_style` 选，空时按 industry 自动判定。mock 占位文案一并升级。
-- **不改契约**: copy_style 字段 PM 已加进 schema（ADR-013）。
-- **验收**: 自动化测结构/风格注入/两套不同；真实 Claude 生成对比留给复审，由用户主观判断质量提升。
-- **施工图**: `CONTRACTS/T-006_copy_quality_spec.md`（验收标准在文末）。
+### T-006b 文案 prompt 二次升级（PM 直接改，已真实验证 + 定稿）
+- **状态**: DONE（PM 改 + 真实中转 key 双风格验证 + 用户定稿 2026-06-11）
+- **负责**: Claude（PM 直接改 prompt 内容，属文案创作能力非工程实现，走快路径）
+- **改了什么**: 大改 `build_claude_instruction` 主指令 + 两套风格规则。三轮迭代后定稿的核心规则：①「个体户只给一句话，吸引人的文案是 AI 的活，复述输入=失败」②「创意在于怎么说、不在编造事实」③「先卖体验、优惠最多提一两次垫最后」④**「每个场景必须推进到新信息，禁止换皮重复同一角度，给视频层次」**（治本规则，同时解决餐饮"三句不离钱"和口腔"三句不离未知"）。
+- **真实验证（中转 key 双风格）**: 餐饮 punchy（勾馋勾场景、优惠垫后）+ 口腔 trust（钩子→知识点→做法→破除误区→引导，有层次有信息增量），用户认可。
+- **定位共识（重要）**: prompt 只把文案稳定顶到「80 分底稿」，LLM 生成有随机性、不可能每条完美。最后 20 分的微调 + 偶尔失手的兜底，靠 M5 人工编辑。再盲调 prompt 边际收益递减——用户已决策接受波动、定稿、把精力转 M5。
+
+### T-007 离线文案接入 — file provider（次目标已由 PM 完成）
+- **状态**: TODO（file provider 部分待 Codex；次目标"中转地址可配置"已由 PM 完成并验证）
+- **负责**: Claude 出规格 → Codex 实现 file provider → Claude 审查
+- **次目标已完成（PM 直接改）**: `ClaudeProvider` 接入地址改为读 `ANTHROPIC_BASE_URL`（默认官方），中转站 key 已实测打通（用户中转站 nexus 可用）。
+- **主目标待 Codex**: `--provider file` 离线人工投喂——生成 output/llm_prompt.txt，喂任意 AI，JSON 存回 response 文件，重跑读回继续流水线。零 key。
+- **不改契约**: 只动 llm_generate.py provider 层 + run_workflow 接入。
+- **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`（验收标准在文末；注意次目标已完成，Codex 只做 file provider 部分）。
+
+### M5 网页编辑器（含人工微调文案 — 用户必备需求）
+- **状态**: TODO（待规划，优先级提升）
+- **说明**: 用户明确「人工微调文案」是必备需求，归入 M5。M5 = 一个让非技术用户能审、能改、能重新生成的网页工作台，收纳三件事：①审核 Web 界面 + 改文案(脚本/字幕/口播/语气) ②增量重渲染（改一段只重跑一段配音/画面）③离线投喂分页（生成提示词一键复制 + 主流大模型网页链接，用户自选 AI 复制生成再回来继续）。AI 出 80 分底稿，人工微调那 20 分，咬合 ADR-002 半自动定位。
 
 ## 已完成
+
+### T-006 文案质量专项 — prompt 工程 + 两套可切换风格 (M1 回炉)
+- **状态**: DONE（Claude 复审通过 2026-06-11；真实 Claude 生成对比因环境无 key 另行验收）
+- **负责**: Codex 实现 → Claude 审查
+- **复审怎么做的（亲自跑，无虚报；bundled python 3.12）**: 三套单测全过；默认口腔 demo 自动走 professional_trust（结构"信任建立-流程说明-具体卖点-风险克制-温和引导"，文案稳重克制）；临时餐饮 config 自动走 punchy_local（结构"强钩子-痛点直击-卖点具体化-少走弯路-明确行动"，口语强钩子强转化）；两套 mock 文案明显不同且都通过 validate_generation。
+- **prompt 是真升级**: `build_claude_instruction` 从纯结构约束扩成 角色设定 + 风格创作准则 + 通用文案准则(钩子/痛点/卖点具体化/caption≠voiceover/转化引导) + 合规禁区 + few-shot，保留 tool_use 强制结构化。
+- **复审顺手修复（机械小修）**: `PUNCHY_LOCAL_INDUSTRY_KEYWORDS` 原是死代码（定义未用）→ 接进 `resolve_copy_style` 判定逻辑（显式命中 punchy 赛道再兜底），行为不变、语义更清晰。
+- **遗留**: 真实 Claude 生成质量对比未跑（复审环境无 ANTHROPIC_API_KEY，按安全原则不硬塞 key）。这是 T-006 验收核心，需在带 key 环境单独跑，由用户主观判断质量提升。
+- **施工图**: `CONTRACTS/T-006_copy_quality_spec.md`
 
 ### T-005 M3 复审收尾 cleanup
 - **状态**: DONE（Claude 直接修复并验证 2026-06-11）

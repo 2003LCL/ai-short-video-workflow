@@ -3,6 +3,94 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-11 #20] Claude(PM) → 你(人类)
+**改动**: 中转地址打通真实生成 + 文案 prompt 二次大改并真实验证 + 把「人工微调文案」归入 M5。代码改动待用户确认定稿后提交。
+**涉及文件（已改未提交）**:
+- `llm_generate.py`：① `ClaudeProvider` 接入地址可配置（`ANTHROPIC_BASE_URL`，默认官方）② 大改 `build_claude_instruction` 主指令 + 两套风格规则
+- `tests/test_llm_generate.py`：更新 prompt 注入断言锚点（随 prompt 改写）
+- 协作文档 TASKS/STATE/本段；T-007 spec 状态备注更新
+**做了什么、为什么**:
+- **修 403（次目标，PM 直接改）**：根因是 `llm_generate.py` 把请求 URL 写死官方端点，中转站 key 打过去被拒。改成读 `ANTHROPIC_BASE_URL`，其余请求格式不动（中转站兼容官方 Messages API）。用户中转站(nexus)实测打通，`--provider claude` 真实生成成功。
+- **文案 prompt 二次大改（T-006b，PM 直接改，走快路径）**：首版真实文案用户评「草率、三句不离钱、廉价」。诊断根因=我首版 prompt 太强调「把 offer 翻译成好处」，offer 是"五折"时 AI 一头扎进钱里。大改加了三类规则：①个体户只给一句话、复述输入=失败、吸引人靠 AI ②创意在角度不在编造事实 ③**关键平衡规则：先卖体验(味道/烟火气/场景/情绪)、折扣最多提一两次垫最后当行动理由**。用中转 key 重跑极简餐饮(店名/烧烤/周年庆/五折)：改后 4 场景仅 1 场讲折扣、其余勾馋勾场景，用户认可「思路对了」。
+- **为什么 PM 直接改而非走 Codex**：prompt 内容质量本质是文案创作能力非工程实现，且中转 key 已通、"改→真实跑→看效果→再调"由我闭环最快。类似 T-005 Reviewer 直接改的快路径。
+- **人工微调归 M5（用户决策）**：用户明确「人工微调文案」是必备需求，prompt 只做 80 分底稿、剩 20 分人工调。归入 M5 网页编辑器，与投喂分页、增量重渲染合为一个"非技术用户能审/改/重生成的网页工作台"。
+**接口变化**: 无（未动 CONTRACTS；copy_style 字段上轮已加）。
+**验证情况**: 三套单测过；中转 key 真实生成餐饮文案两版（改前/改后）已人工对比。仅餐饮(punchy)验过，trust(口腔/教育)未重验。
+**遗留 / 下一步（等你拍板）**:
+1. **文案定稿确认**：这版 prompt 你认可即定稿。建议定稿前我用中转 key 补跑一次 trust 风格(口腔)，确认平衡规则没把专业克制风格带歪。
+2. **提交 GitHub**：你说过「改完文案一起提交」——确认定稿后，把中转地址 + 文案 prompt + 测试一起提交。
+3. **T-007 file provider** 主目标仍可让 Codex 做（离线零 key 备份方案），次目标已完成。
+4. **M5 规划**：人工微调 + 投喂分页 + 增量重渲染，优先级已提升。
+**⚠️ 安全**: 用户在对话里贴过中转站 key，我已用完即弃、未写入任何文件/未提交。建议用户去中转站后台吊销该 key 换新。
+
+## [2026-06-11 #19] Claude(PM) → Codex
+**改动**: 用户真实跑 `--provider claude` 被中转站 403 阻断；用户提出「生成提示词文件喂给任意 AI」的离线方案。据此产出 T-007 规格 + ADR-014。
+**涉及文件**:
+- 新增 `CONTRACTS/T-007_offline_copy_spec.md`（施工图，验收标准在文末）
+- 更新 `DECISIONS.md`（+ADR-014：file provider 人工投喂为主 + 中转地址可配置为辅）
+- 更新 `TASKS.md`（T-007 → TODO 就绪）、`STATE.md`、本段
+- 未写业务代码，未改契约
+**问题根因（已查证）**: `llm_generate.py:127` 把请求 URL 写死成官方 `https://api.anthropic.com/v1/messages`。用户用的是中转站 key，打到官方端点被 403 forbidden。不是代码 bug、不是 key 失效，是接入地址不匹配。
+**为什么这么设计 T-007**:
+- **主方案 file provider**：用户首选，也最稳——彻底不依赖 key，生成提示词文件人工喂给任意 AI，拿回 JSON 读回流水线。完美咬合 ADR-002 半自动定位，且让 T-006 升级的 prompt 不靠 key 就能见效。
+- **顺手修中转**：只把 ClaudeProvider 的接入地址改成可配置（ANTHROPIC_BASE_URL），其余请求格式不动（中转站基本都兼容官方 Messages API 格式）。地址由用户运行时填，Codex 不碰用户 key。
+- **两条路互为备份**：能配通中转就自动化，配不通就人工投喂，都不卡产品验证。
+- **最容易踩的坑写进规格**：file 模式靠文件落盘衔接两次运行，--clean 会删掉 response——建议 response 文件放 output/ 外规避（参考 T-006 验证时踩过的 --clean 删文件教训）；AI 返回 JSON 常被 markdown 包裹，读取要宽容剥壳。
+**PM 已当场验证 prompt 价值**: 我（Claude）在对话里直接用 T-006 升级后的 prompt 手写了一版星河口腔的真实文案给用户看——钩子戳中"怕疼/怕出血/怕被推销"、痛点大白话、全程无疗效承诺、结尾温和引导面诊，明显优于 mock 占位的平铺直叙。证明 T-006 的 prompt 升级方向对，只差一个能跑真实模型的通道，这正是 T-007 要补的。
+**接口变化**: 无（不动 CONTRACTS，不动 T-006 prompt 内容）。
+**验证情况**: 仅文档/规格。现有 mock/claude/M2/M3 主流程未动仍可运行。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-013/014→schema→T-007 spec，实现 FileProvider + ClaudeProvider 地址可配置 + 补测试，完成后改 T-007 为 REVIEW 并在此写交接段。
+**给 Codex 的话**: file 模式是重点，把"两次运行靠文件衔接 + --clean 坑 + 友好的人工操作指引"做扎实，让不懂技术的人照着提示也能完成投喂。中转地址那条只做代码+单测，别拿用户真实 key 跑。
+
+## [2026-06-11 #18] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-006 文案专项，**代码层通过，T-006 → DONE**。复审顺手清掉一处死代码。真实 Claude 文案对比因环境无 key 未跑，交回给你。
+**涉及文件**: `llm_generate.py`（顺手把死代码常量接进判定逻辑）；协作文档 TASKS/STATE/本段。
+**复审怎么做的（亲自跑，无虚报；bundled python 3.12）**:
+- 三套单测全过（test_llm_generate 含 copy_style 显式/自动/兜底、透传、mock 两套风格差异、prompt 注入关键词，是真测）。
+- 默认口腔 demo 跑通：自动走 `professional_trust`，结构"信任建立-流程说明-具体卖点-风险克制-温和引导"，文案稳重克制。
+- 临时餐饮 config 跑通：自动走 `punchy_local`，结构"强钩子-痛点直击-卖点具体化-少走弯路-明确行动"，口语强钩子强转化。两套文案明显不同。
+- 重点核对了 prompt 质量本身：`build_claude_instruction` 从原来 12 行纯结构约束，扩成 角色设定(本地商户短视频文案操盘手) + 风格创作准则 + 通用文案准则(首屏钩子/痛点/卖点具体化/caption≠voiceover/转化引导) + 合规禁区 + few-shot，保留 tool_use 强制结构化。**这是真升级，不是只把结构跑通**。
+**为什么通过（代码层）**: prompt 工程方向对、质量实打实；copy_style 解析的显式/自动/兜底逻辑正确；两套 mock 风格确实不同且都合法；契约只消费 PM 加的 copy_style 字段未擅改；闭环(TTS/MP4)未受影响。
+**复审顺手修复（机械小修，Reviewer 直接改）**: `llm_generate.py:29 PUNCHY_LOCAL_INDUSTRY_KEYWORDS` 原是死代码（定义了从未引用，resolve_copy_style 只查 trust 否则一律 punchy）→ 接进判定逻辑（显式命中 punchy 赛道再兜底），行为不变、语义更清晰。已验证测试仍全过、三类输入 + 显式覆盖行为不变。
+**接口变化**: 无（CONTRACTS 未动）。
+**唯一遗留，必须交回给你（重要）**: **真实 Claude 文案生成对比没跑成**——复审环境里没有 ANTHROPIC_API_KEY / CLAUDE_API_KEY，按项目安全原则我不会去找或硬塞 key。这恰恰是 T-006 的**验收核心**：mock 文案再像样也只是模板拼接，证明不了升级后的 prompt 对真实 Claude 的效果。Codex 没跑真实 key 是对的（规格要求它别跑，避免 key 进仓库）。
+**下一步建议（等你拍板）**:
+1. **真实文案验收**：在你有 key 的环境跑 `python run_workflow.py --demo-assets --clean --provider claude`（口腔→trust）和一个餐饮 config（→punchy），各看 1-2 条真实文案，主观判断比 mock 占位是否真的更会"带货"。这是文案专项价值的最终检验。key 用环境变量注入，别写进 config/仓库。
+2. 是否把 T-006 代码提交 GitHub。
+3. 真实文案满意后，选下一个里程碑：M4(素材打标签+自动匹配，护城河/最大瓶颈) 还是 M5(审核 Web 界面+增量重渲染)。
+**给你的提醒**: 你之前明确"文案才是视频好坏的关键"。这一棒把生成文案的 prompt 引擎做厚了，但它到底好不好，得你用真实 key 跑出来亲眼看——这是唯一能下结论的方式。
+
+## [2026-06-11 #17] Codex(Dev) → Claude(Reviewer)
+**改动**: 实现 T-006 文案质量专项。升级 `llm_generate.py` 的文案 prompt、copy_style 解析、mock 两套文案风格，并补测试。T-006 已改为 REVIEW。
+
+**涉及文件**:
+- 修改 `llm_generate.py`
+- 修改 `tests/test_llm_generate.py`
+- 更新 `Claude-Codex/STATE.md`
+- 更新 `Claude-Codex/TASKS.md`
+- 更新本交接段
+- 未修改 `CONTRACTS/`，只消费已存在的 `config.copy_style`
+
+**为什么这么做**:
+- **prompt 核心升级**：`build_claude_instruction()` 不再只讲 JSON 结构，而是给 Claude 明确角色：本地小商户短视频文案操盘手；加入首屏钩子、痛点、卖点具体化、转化引导、caption/voiceover 区分、合规禁区、few-shot 结构示例，并继续保持 tool_use 强制结构化输出。
+- **两套风格**：新增 `punchy_local` 和 `professional_trust`。`punchy_local` 强调前 3 秒钩子、下沉口语、痛点直给、直接 CTA；`professional_trust` 强调专业克制、流程透明、正规咨询、避免夸张承诺。
+- **copy_style 解析**：新增模块常量 `PROFESSIONAL_TRUST_INDUSTRY_KEYWORDS` 和 `PUNCHY_LOCAL_INDUSTRY_KEYWORDS`。`resolve_copy_style(config, shop)` 规则是显式 `copy_style` 优先；为空时医疗/口腔/医美/教育/培训/法律/金融/健康等走 `professional_trust`；其他或无法识别默认 `punchy_local`。
+- **mock 同步升级**：`MockProvider` 现在按 resolved copy_style 生成不同脚本、标题、封面、post_copy、BGM 和 recommended_structure。默认口腔 demo 自动走 `professional_trust`；餐饮类临时 config 自动走 `punchy_local`。
+- **契约透传**：`build_project_input()` 已把 `copy_style` 写进 `project_input["config"]`，旧 config 无字段时传空字符串并自动判定。
+
+**接口变化**: 无。没有改 `CONTRACTS/video_project.schema.json`。
+
+**验证情况**:
+- 通过：`python tests/test_llm_generate.py`，新增覆盖显式覆盖、industry 自动判定、兜底、copy_style 透传、mock 两套风格差异、prompt 关键词注入。
+- 通过：默认口腔 demo `python run_workflow.py --demo-assets --clean --skip-tts --skip-mp4`，mock 自动走 `professional_trust`，recommended_structure 为“信任建立-流程说明-具体卖点-风险克制-温和引导”。
+- 通过：临时餐饮 config 跑 `--skip-tts --skip-mp4`，mock 自动走 `punchy_local`，recommended_structure 为“强钩子-痛点直击-卖点具体化-少走弯路-明确行动”。
+- 通过：`python tests/test_tts_generate.py`
+- 通过：`python tests/test_render_mp4.py`
+- 通过：`.\scripts\check_project.ps1`
+- 未跑真实 Claude key：按 T-006 要求，避免 key 进入仓库/日志。真实 Claude 生成质量对比留给 Claude/用户复审。
+
+**下一步建议**: Claude 复审时重点看 `build_claude_instruction()` 的 prompt 是否真的能提升文案质量，而不仅是结构正确；再用真实 key 跑 1-2 条 `--provider claude`，把真实生成和 mock 占位一起交给用户主观判断。
+
 ## [2026-06-11 #16] Claude(PM) → Codex
 **改动**: M3 代码已提交 GitHub；完成 T-005 cleanup；启动文案质量专项 T-006，产出规格 + 升级契约 + 记 ADR-013。
 **涉及文件**:

@@ -3,6 +3,28 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-11 #21] Claude(PM) → Codex
+**改动**: 文案 prompt 已定稿提交（07b1d8e）。启动 M5 网页编辑器，定技术栈(ADR-015) + 出第一期 T-008 文案审改规格。
+**涉及文件**:
+- 新增 `CONTRACTS/T-008_web_editor_phase1_spec.md`（第一期施工图，验收标准在文末）
+- 更新 `DECISIONS.md`（+ADR-015：M5 技术栈 Python+Flask 后端 / 原生 HTML+JS 前端 / 分期 / API 可替换；关闭 ADR-005 挂起的前端栈评估）
+- 更新 `TASKS.md`（M5 拆成 T-008 第一期 + 后续期占位）、`STATE.md`（焦点转 M5）、本段
+- 未写业务代码，未改契约
+**M5 决策怎么定的（用户拍板）**:
+- 用户定：第一期**只做文案审改** + **本地网页**；技术栈听 PM 分析后选了 **Python 后端 + 原生前端**。
+- PM 分析（写进 ADR-015）：核心逻辑(LLM/TTS/渲染/plan.json)全在 Python，第一期文案审改本质是 读 plan.json→表单→写回，后端直接调现有代码；上 React 后端仍得 Python，等于为一个改文字的表单平白加一套 Node 链路。React 价值在复杂交互(时间轴/实时预览)，第一期用不到，留到后期且因 **API 设计成可替换**不影响后端。落实了 ADR-005 当初挂起的「M5 再评估前端栈」。
+- 框架选 Flask（轻量、Python web 事实标准、做 JSON API 省事）。
+**T-008 范围红线（Codex 务必守住）**:
+- 只做文案审改：读写 plan.json 的文案字段（script.* + scenes[].caption/voiceover），不做重渲染、不做投喂分页（后续期）。
+- **保存副作用**：改完要同步 captions.srt / voiceover 文本 / video_plan.md（复用 run_workflow 的 write_srt/write_voiceover_files/write_markdown）；配音 mp3/MP4 第一期不自动重生成，但前端要提示「配音视频需重新生成」。
+- **契约纪律**：不改 schema；只更新允许的文案字段，保留 analysis/audio/renders/compliance 不动；前端不许改 start/duration/timeline；改过的 scene 置 edited=true。
+- **安全**：服务绑 127.0.0.1（不绑 0.0.0.0，第一期不对外、避免无鉴权服务暴露）；Flask debug 不开。
+- **已知坑**：plan.json 里 `plan.scenes`(legacy) 和顶层 `scenes` 是两份镜像，保存文案两处都要更新，否则重渲染读到旧文案——Codex 看清结构、在 HANDOFF 说明怎么保证一致。
+**接口变化**: 无（不动 CONTRACTS）。新增 flask 依赖。
+**验证情况**: 仅文档/规格。现有流水线未动。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-002/011/015→schema→T-008 spec，实现 `web_app.py`(Flask API + 原生前端页) + `tests/test_web_app.py`，完成后改 T-008 为 REVIEW 并在此写交接段。
+**给 Codex 的话**: 这是给店主这种非技术用户用的，界面用中文、字段标签说人话（「这句话的字幕」而非 caption）。先把「能看明白→能改→能存回→字幕口播同步」这条跑通，别扩到重渲染。保存逻辑要「读现有 plan.json→只改文案字段→写回」，别整个覆盖丢字段。
+
 ## [2026-06-11 #20] Claude(PM) → 你(人类)
 **改动**: 中转地址打通真实生成 + 文案 prompt 二次大改并真实验证 + 把「人工微调文案」归入 M5。代码改动待用户确认定稿后提交。
 **涉及文件（已改未提交）**:

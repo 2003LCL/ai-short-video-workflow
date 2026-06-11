@@ -1,13 +1,17 @@
 import json
 import os
+import shutil
 import tempfile
 import threading
+import time
 import webbrowser
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template_string, request
 
 import run_workflow
+from render_mp4 import MP4RenderError, render_mp4
+from tts_generate import TTSGenerationError, generate_voiceover_audio
 
 
 ROOT = Path(__file__).resolve().parent
@@ -222,6 +226,170 @@ def sync_text_outputs(project: dict, output_dir: Path = OUTPUT_DIR) -> None:
         run_workflow.OUTPUT_DIR = original_output_dir
 
 
+def build_output_assets(output_dir: Path = OUTPUT_DIR) -> list[dict]:
+    asset_dir = output_dir / "assets"
+    if not asset_dir.exists():
+        return []
+    image_exts = getattr(run_workflow, "IMAGE_EXTS", {".jpg", ".jpeg", ".png", ".webp", ".bmp"})
+    return [
+        {"source": path.name, "file": path.name}
+        for path in sorted(asset_dir.iterdir())
+        if path.is_file() and path.suffix.lower() in image_exts
+    ]
+
+
+def mirror_voiceover_audio(project: dict) -> None:
+    top_scenes = project.get("scenes")
+    legacy_scenes = get_legacy_plan(project)["scenes"]
+    if not isinstance(top_scenes, list):
+        raise ValueError("plan.json 的顶层 scenes 不是列表，无法同步配音信息。")
+    top_by_order = {scene.get("order"): scene for scene in top_scenes}
+    for legacy_scene in legacy_scenes:
+        order = legacy_scene.get("order")
+        top_scene = top_by_order.get(order)
+        if top_scene is None:
+            continue
+        audio = legacy_scene.get("voiceover_audio")
+        if audio:
+            top_scene["voiceover_audio"] = dict(audio)
+        else:
+            top_scene.pop("voiceover_audio", None)
+
+
+def clear_edited_flags(project: dict, orders: set[int]) -> None:
+    top_scenes = project.get("scenes") or []
+    legacy_scenes = get_legacy_plan(project)["scenes"]
+    for scenes in (top_scenes, legacy_scenes):
+        for scene in scenes:
+            if scene.get("order") in orders:
+                scene["edited"] = False
+
+
+def upsert_render_entry(renders: list[dict], entry: dict) -> list[dict]:
+    kept = [item for item in renders if item.get("kind") != entry.get("kind")]
+    kept.append(entry)
+    return kept
+
+
+def backup_audio_files(scenes: list[dict], orders: set[int], output_dir: Path) -> tuple[Path, list[dict]]:
+    backup_dir = Path(tempfile.mkdtemp(prefix="voiceover_audio_backup_", dir=output_dir))
+    records = []
+    for idx, scene in enumerate(scenes, start=1):
+        order = scene.get("order", idx)
+        if order not in orders:
+            continue
+        audio = scene.get("voiceover_audio") or {}
+        rel_file = str(audio.get("file") or f"voiceover_audio/scene_{int(order):02d}.mp3")
+        current_path = output_dir / rel_file
+        backup_path = backup_dir / rel_file.replace("/", "_").replace("\\", "_")
+        record = {"path": current_path, "backup": backup_path, "existed": current_path.exists()}
+        if current_path.exists():
+            shutil.copy2(current_path, backup_path)
+        records.append(record)
+    return backup_dir, records
+
+
+def restore_audio_files(backup_dir: Path, records: list[dict]) -> None:
+    for record in records:
+        current_path = record["path"]
+        backup_path = record["backup"]
+        if record["existed"]:
+            current_path.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(backup_path, current_path)
+        elif current_path.exists():
+            current_path.unlink()
+    shutil.rmtree(backup_dir, ignore_errors=True)
+
+
+def cleanup_audio_backup(backup_dir: Path) -> None:
+    shutil.rmtree(backup_dir, ignore_errors=True)
+
+
+def backup_file(path: Path) -> tuple[Path, bool]:
+    backup_path = Path(tempfile.mktemp(prefix=f"{path.name}.backup.", dir=path.parent))
+    if path.exists():
+        shutil.copy2(path, backup_path)
+        return backup_path, True
+    return backup_path, False
+
+
+def restore_file(path: Path, backup_path: Path, existed: bool) -> None:
+    if existed:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(backup_path, path)
+    elif path.exists():
+        path.unlink()
+    if backup_path.exists():
+        backup_path.unlink()
+
+
+def rerender_project(
+    project: dict,
+    output_dir: Path = OUTPUT_DIR,
+    tts_provider_name: str = "edge",
+    tts_provider=None,
+    mp4_renderer=render_mp4,
+    frame_renderer=run_workflow.render_scene_frames,
+) -> tuple[dict, dict]:
+    started = time.perf_counter()
+    legacy_plan = get_legacy_plan(project)
+    edited_orders = {
+        int(scene.get("order"))
+        for scene in (project.get("scenes") or [])
+        if scene.get("edited") is True and isinstance(scene.get("order"), int)
+    }
+    tts_provider_name = str((project.get("config") or {}).get("tts_provider") or tts_provider_name)
+    audio_backup_dir, audio_backup_records = backup_audio_files(legacy_plan["scenes"], edited_orders, output_dir)
+    video_path = output_dir / "video.mp4"
+    video_backup_path, video_existed = backup_file(video_path)
+    success = False
+    try:
+        audio = generate_voiceover_audio(
+            legacy_plan["scenes"],
+            project.get("config") or {},
+            output_dir,
+            provider_name=tts_provider_name,
+            provider=tts_provider,
+            only_orders=edited_orders,
+        )
+        if audio.get("warnings"):
+            raise TTSGenerationError("; ".join(str(item) for item in audio["warnings"]))
+        mirror_voiceover_audio(project)
+        assets = build_output_assets(output_dir)
+        original_assets_dir = run_workflow.ASSETS_DIR
+        run_workflow.ASSETS_DIR = output_dir / "assets"
+        try:
+            mp4_entry = mp4_renderer(legacy_plan, assets, output_dir, frame_renderer)
+        finally:
+            run_workflow.ASSETS_DIR = original_assets_dir
+
+        sync_text_outputs(project, output_dir)
+        clear_edited_flags(project, edited_orders)
+        project["audio"] = audio
+        project["renders"] = upsert_render_entry(project.get("renders") or [], mp4_entry)
+        project["status"] = "rerendered"
+        success = True
+        return project, {
+            "edited_orders": sorted(edited_orders),
+            "mp4": mp4_entry,
+            "audio": audio,
+            "elapsed_seconds": round(time.perf_counter() - started, 3),
+        }
+    except TTSGenerationError as exc:
+        raise RuntimeError(f"增量配音失败，旧音频和旧视频未被破坏：{exc}") from exc
+    except MP4RenderError as exc:
+        raise RuntimeError(f"视频重新生成失败，旧视频未被破坏：{exc}") from exc
+    finally:
+        if success:
+            cleanup_audio_backup(audio_backup_dir)
+            if video_backup_path.exists():
+                video_backup_path.unlink()
+        else:
+            restore_audio_files(audio_backup_dir, audio_backup_records)
+            restore_file(video_path, video_backup_path, video_existed)
+
+
+
 def apply_copy_update(project: dict, payload: dict) -> tuple[dict | None, dict]:
     validated, errors = validate_copy_payload(payload, project)
     if errors:
@@ -292,6 +460,31 @@ def api_save_copy():
             "ok": True,
             "project": extract_editable_project(updated),
             "message": "文案已保存。字幕和口播文本已同步；配音和视频需要重新生成才会更新。",
+        }
+    )
+
+
+@app.post("/api/project/rerender")
+def api_rerender_project():
+    try:
+        project = load_project(PLAN_PATH)
+    except FileNotFoundError as exc:
+        return api_error(str(exc), 404)
+    except ValueError as exc:
+        return api_error(str(exc), 500)
+
+    try:
+        updated, result = rerender_project(project, OUTPUT_DIR)
+        save_project(updated, PLAN_PATH)
+    except Exception as exc:
+        return api_error(f"{exc}。旧视频未被破坏，可以修改后再试。", 500)
+
+    return jsonify(
+        {
+            "ok": True,
+            "project": extract_editable_project(updated),
+            "rerender": result,
+            "message": "视频已重新生成，改过的段落已经重新配音，MP4 已更新。",
         }
     )
 
@@ -433,6 +626,8 @@ INDEX_HTML = r"""<!doctype html>
       cursor: pointer;
     }
     button:disabled { opacity: .6; cursor: wait; }
+    .button-row { display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+    .secondary { background: #334155; }
     .notice { color: var(--muted); font-size: 14px; }
     .status { font-weight: 700; }
     .error { color: var(--danger); }
@@ -442,6 +637,7 @@ INDEX_HTML = r"""<!doctype html>
       main { width: min(100vw - 20px, 720px); margin-top: 14px; }
       .grid { grid-template-columns: 1fr; }
       .actions { align-items: stretch; flex-direction: column; }
+      .button-row { flex-direction: column; }
       button { width: 100%; }
     }
   </style>
@@ -490,7 +686,10 @@ INDEX_HTML = r"""<!doctype html>
         <div class="notice">保存会同步字幕和口播文本；已有配音、GIF、MP4 需要重新生成才会更新。</div>
         <div id="status" class="status"></div>
       </div>
-      <button id="saveBtn" type="button">保存文案</button>
+      <div class="button-row">
+        <button id="rerenderBtn" class="secondary" type="button">重新生成视频</button>
+        <button id="saveBtn" type="button">保存文案</button>
+      </div>
     </div>
   </main>
   <script>
@@ -507,6 +706,7 @@ INDEX_HTML = r"""<!doctype html>
       scenes: document.getElementById('scenes'),
       status: document.getElementById('status'),
       saveBtn: document.getElementById('saveBtn'),
+      rerenderBtn: document.getElementById('rerenderBtn'),
     };
     let currentProject = null;
 
@@ -589,6 +789,7 @@ INDEX_HTML = r"""<!doctype html>
 
     async function saveProject() {
       els.saveBtn.disabled = true;
+      els.rerenderBtn.disabled = true;
       setStatus('正在保存...', '');
       try {
         const res = await fetch('/api/project/copy', {
@@ -606,10 +807,32 @@ INDEX_HTML = r"""<!doctype html>
         setStatus(data.message || '文案已保存', 'ok');
       } finally {
         els.saveBtn.disabled = false;
+        els.rerenderBtn.disabled = false;
+      }
+    }
+
+    async function rerenderProject() {
+      els.saveBtn.disabled = true;
+      els.rerenderBtn.disabled = true;
+      setStatus('正在重新生成视频，可能需要一两分钟...', '');
+      try {
+        const res = await fetch('/api/project/rerender', { method: 'POST' });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          setStatus(data.error || '重新生成失败，旧视频未被破坏。', 'error');
+          return;
+        }
+        renderProject(data.project);
+        const mp4 = data.rerender && data.rerender.mp4 ? data.rerender.mp4.file : 'video.mp4';
+        setStatus((data.message || '视频已更新') + ' 输出文件：output/' + mp4, 'ok');
+      } finally {
+        els.saveBtn.disabled = false;
+        els.rerenderBtn.disabled = false;
       }
     }
 
     els.saveBtn.addEventListener('click', saveProject);
+    els.rerenderBtn.addEventListener('click', rerenderProject);
     loadProject();
   </script>
 </body>

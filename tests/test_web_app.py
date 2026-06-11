@@ -8,6 +8,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import web_app
+from render_mp4 import MP4RenderError
+from tests.test_tts_generate import FakeProvider
 
 
 def sample_project() -> dict:
@@ -248,6 +250,176 @@ def test_browser_auto_open_env_switch():
             os.environ.pop("AI_VIDEO_NO_BROWSER", None)
         else:
             os.environ["AI_VIDEO_NO_BROWSER"] = original
+
+
+def test_rerender_project_incremental_audio_then_clears_edited_on_success():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        project["scenes"][0]["edited"] = True
+        project["plan"]["scenes"][0]["edited"] = True
+        audio_dir = base / "voiceover_audio"
+        audio_dir.mkdir(parents=True)
+        (audio_dir / "scene_01.mp3").write_bytes(b"old 1")
+        (audio_dir / "scene_02.mp3").write_bytes(b"old 2")
+
+        def fake_mp4_renderer(plan, assets, output_dir, frame_renderer):
+            (output_dir / "video.mp4").write_bytes(b"new video")
+            return {"platform": "generic", "aspect_ratio": "9:16", "kind": "mp4", "file": "video.mp4"}
+
+        provider = FakeProvider()
+        updated, result = web_app.rerender_project(
+            project,
+            base,
+            tts_provider_name="fake",
+            tts_provider=provider,
+            mp4_renderer=fake_mp4_renderer,
+        )
+
+        assert provider.calls == [1]
+        assert (audio_dir / "scene_01.mp3").read_bytes() == b"fake mp3 1"
+        assert (audio_dir / "scene_02.mp3").read_bytes() == b"old 2"
+        assert updated["scenes"][0]["edited"] is False
+        assert updated["plan"]["scenes"][0]["edited"] is False
+        assert updated["scenes"][1]["edited"] is False
+        assert updated["plan"]["scenes"][1]["edited"] is False
+        assert updated["audio"]["segments"] == 2
+        assert updated["renders"][-1]["kind"] == "mp4"
+        assert result["edited_orders"] == [1]
+        assert "鍘熷瓧骞曚竴" in (base / "captions.srt").read_text(encoding="utf-8")
+        assert (base / "video.mp4").read_bytes() == b"new video"
+
+
+def test_rerender_project_mp4_failure_restores_old_outputs_and_keeps_edited():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        project["scenes"][0]["edited"] = True
+        project["plan"]["scenes"][0]["edited"] = True
+        audio_dir = base / "voiceover_audio"
+        audio_dir.mkdir(parents=True)
+        (audio_dir / "scene_01.mp3").write_bytes(b"old 1")
+        (audio_dir / "scene_02.mp3").write_bytes(b"old 2")
+        (base / "video.mp4").write_bytes(b"old video")
+
+        def failing_mp4_renderer(plan, assets, output_dir, frame_renderer):
+            (output_dir / "video.mp4").write_bytes(b"broken partial video")
+            raise MP4RenderError("forced render failure")
+
+        provider = FakeProvider()
+        try:
+            web_app.rerender_project(
+                project,
+                base,
+                tts_provider_name="fake",
+                tts_provider=provider,
+                mp4_renderer=failing_mp4_renderer,
+            )
+        except RuntimeError as exc:
+            assert "旧视频未被破坏" in str(exc)
+        else:
+            raise AssertionError("rerender_project should fail when MP4 render fails")
+
+        assert provider.calls == [1]
+        assert (audio_dir / "scene_01.mp3").read_bytes() == b"old 1"
+        assert (audio_dir / "scene_02.mp3").read_bytes() == b"old 2"
+        assert (base / "video.mp4").read_bytes() == b"old video"
+        assert project["scenes"][0]["edited"] is True
+        assert project["plan"]["scenes"][0]["edited"] is True
+
+
+def test_rerender_project_tts_failure_restores_old_outputs_and_keeps_edited():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        project["scenes"][0]["edited"] = True
+        project["plan"]["scenes"][0]["edited"] = True
+        audio_dir = base / "voiceover_audio"
+        audio_dir.mkdir(parents=True)
+        (audio_dir / "scene_01.mp3").write_bytes(b"old 1")
+        (audio_dir / "scene_02.mp3").write_bytes(b"old 2")
+        (base / "video.mp4").write_bytes(b"old video")
+        old_meta = dict(project["plan"]["scenes"][0]["voiceover_audio"])
+
+        provider = FakeProvider(fail_on={1})
+        try:
+            web_app.rerender_project(project, base, tts_provider_name="fake", tts_provider=provider)
+        except RuntimeError as exc:
+            assert "旧音频和旧视频未被破坏" in str(exc)
+        else:
+            raise AssertionError("rerender_project should fail when selected TTS segment fails")
+
+        assert provider.calls == [1]
+        assert (audio_dir / "scene_01.mp3").read_bytes() == b"old 1"
+        assert (audio_dir / "scene_02.mp3").read_bytes() == b"old 2"
+        assert (base / "video.mp4").read_bytes() == b"old video"
+        assert project["plan"]["scenes"][0]["voiceover_audio"] == old_meta
+        assert project["scenes"][0]["edited"] is True
+        assert project["plan"]["scenes"][0]["edited"] is True
+
+
+def test_rerender_api_returns_failure_without_saving_plan_when_renderer_fails():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        project["scenes"][0]["edited"] = True
+        project["plan"]["scenes"][0]["edited"] = True
+        (base / "voiceover_audio").mkdir(parents=True)
+        (base / "voiceover_audio" / "scene_01.mp3").write_bytes(b"old 1")
+        (base / "voiceover_audio" / "scene_02.mp3").write_bytes(b"old 2")
+        (base / "video.mp4").write_bytes(b"old video")
+        plan_path = configure_temp_project(base, project)
+        client = web_app.app.test_client()
+        original = web_app.rerender_project
+
+        def fail_rerender(project, output_dir):
+            raise RuntimeError("视频重新生成失败，旧视频未被破坏：forced")
+
+        try:
+            web_app.rerender_project = fail_rerender
+            response = client.post("/api/project/rerender")
+            data = response.get_json()
+        finally:
+            web_app.rerender_project = original
+
+        saved = read_project(plan_path)
+        assert response.status_code == 500
+        assert data["ok"] is False
+        assert "旧视频未被破坏" in data["error"]
+        assert saved["scenes"][0]["edited"] is True
+
+
+def test_rerender_api_saves_successful_result():
+    with tempfile.TemporaryDirectory() as tmp:
+        base = Path(tmp)
+        project = sample_project()
+        project["scenes"][0]["edited"] = True
+        project["plan"]["scenes"][0]["edited"] = True
+        plan_path = configure_temp_project(base, project)
+        client = web_app.app.test_client()
+        original = web_app.rerender_project
+
+        def success_rerender(project, output_dir):
+            project["scenes"][0]["edited"] = False
+            project["plan"]["scenes"][0]["edited"] = False
+            project["audio"] = {"provider": "fake", "voice": "fake-voice", "segments": 2}
+            project["renders"] = [{"platform": "generic", "aspect_ratio": "9:16", "kind": "mp4", "file": "video.mp4"}]
+            return project, {"edited_orders": [1], "mp4": project["renders"][0], "audio": project["audio"]}
+
+        try:
+            web_app.rerender_project = success_rerender
+            response = client.post("/api/project/rerender")
+            data = response.get_json()
+        finally:
+            web_app.rerender_project = original
+
+        saved = read_project(plan_path)
+        assert response.status_code == 200
+        assert data["ok"] is True
+        assert data["rerender"]["edited_orders"] == [1]
+        assert saved["scenes"][0]["edited"] is False
+        assert saved["plan"]["scenes"][0]["edited"] is False
+        assert saved["audio"]["provider"] == "fake"
 
 
 if __name__ == "__main__":

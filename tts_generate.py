@@ -101,6 +101,7 @@ def generate_voiceover_audio(
     out_dir: Path | str,
     provider_name: str = "edge",
     provider: TTSProvider | None = None,
+    only_orders: set[int] | None = None,
 ) -> dict:
     out_dir = Path(out_dir)
     provider = provider or make_tts_provider(provider_name, config)
@@ -110,6 +111,8 @@ def generate_voiceover_audio(
         "segments": 0,
         "total_audio_duration": 0.0,
     }
+    if only_orders is not None:
+        return _generate_incremental_voiceover_audio(scenes, out_dir, provider, only_orders)
     if isinstance(provider, NoneProvider):
         return summary
 
@@ -153,6 +156,86 @@ def generate_voiceover_audio(
         print("TTS warnings:")
         for failure in failures:
             print(f"- {failure}")
+    return summary
+
+
+def _generate_incremental_voiceover_audio(
+    scenes: list[dict],
+    out_dir: Path,
+    provider: TTSProvider,
+    only_orders: set[int],
+) -> dict:
+    audio_dir = out_dir / "voiceover_audio"
+    temp_audio_dir = out_dir / "voiceover_audio.incremental.tmp"
+    if temp_audio_dir.exists():
+        shutil.rmtree(temp_audio_dir)
+    audio_dir.mkdir(parents=True, exist_ok=True)
+    temp_audio_dir.mkdir(parents=True, exist_ok=True)
+
+    target_orders = {int(order) for order in only_orders}
+    failures = []
+    try:
+        if not isinstance(provider, NoneProvider):
+            for idx, scene in enumerate(scenes, start=1):
+                order = _scene_order(scene, idx)
+                if order not in target_orders:
+                    continue
+                text = str(scene.get("voiceover", "")).strip()
+                filename = f"scene_{order:02d}.mp3"
+                temp_path = temp_audio_dir / filename
+                final_path = audio_dir / filename
+                rel_file = f"voiceover_audio/{filename}"
+                try:
+                    duration = provider.synthesize(text, temp_path)
+                except TTSGenerationError as exc:
+                    failures.append(f"scene {order:02d}: {exc}")
+                    if temp_path.exists():
+                        temp_path.unlink()
+                    continue
+
+                duration = round(float(duration), 3)
+                temp_path.replace(final_path)
+                scene["voiceover_audio"] = {
+                    "file": rel_file,
+                    "audio_duration": duration,
+                    "provider": provider.provider_name,
+                    "voice": provider.voice,
+                }
+    finally:
+        if temp_audio_dir.exists():
+            shutil.rmtree(temp_audio_dir)
+
+    if failures:
+        print("TTS warnings:")
+        for failure in failures:
+            print(f"- {failure}")
+    return _summarize_existing_voiceover_audio(scenes, out_dir, provider, failures=failures)
+
+
+def _summarize_existing_voiceover_audio(
+    scenes: list[dict], out_dir: Path, provider: TTSProvider, failures: list[str] | None = None
+) -> dict:
+    segments = 0
+    total_duration = 0.0
+    for scene in scenes:
+        audio = scene.get("voiceover_audio") or {}
+        rel_file = str(audio.get("file") or "").strip()
+        if not rel_file or not (out_dir / rel_file).exists():
+            continue
+        try:
+            duration = float(audio.get("audio_duration") or 0.0)
+        except (TypeError, ValueError):
+            duration = 0.0
+        segments += 1
+        total_duration += max(0.0, duration)
+    summary = {
+        "provider": provider.provider_name,
+        "voice": provider.voice,
+        "segments": segments,
+        "total_audio_duration": round(total_duration, 3),
+    }
+    if failures:
+        summary["warnings"] = list(failures)
     return summary
 
 

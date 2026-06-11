@@ -5,15 +5,6 @@
 
 ## 进行中 / 待办
 
-### T-010 M5 第二期 — 增量重渲染（改完文案重新出片）
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
-- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
-- **目标**: 网页编辑器加「重新生成视频」按钮，点了只对 edited=true 的段重新配音、整条重合成带新文案/配音/字幕的 MP4，网页同步等待看结果。让「改文案→看到新视频」闭环。
-- **务实方案（PM 已和用户确认）**: 配音真增量（只重配改过的段，省未改段 TTS）；画面帧实时画+MP4 整条重编（本来就快/本来就必须，不做帧缓存）。同步等待，不做后台队列。
-- **核心工程点**: ① tts 增量配音（只重配指定段、保留未改段旧 mp3、失败不破坏已有产物）② rerender 编排（增量配音→重渲 MP4→清 edited 标记→原子写 plan.json）③ POST /api/project/rerender + 网页按钮。
-- **不改契约**: 复用已有 edited 标记和 plan.json 字段。
-- **施工图**: `CONTRACTS/T-010_incremental_rerender_spec.md`（验收标准在文末）。
-
 ### T-007 离线文案接入 — file provider（次目标已由 PM 完成）
 - **状态**: TODO（file provider 部分待 Codex；次目标"中转地址可配置"已由 PM 完成并验证）
 - **负责**: Claude 出规格 → Codex 实现 file provider → Claude 审查
@@ -23,6 +14,14 @@
 - **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`（验收标准在文末；注意次目标已完成，Codex 只做 file provider 部分）。
 
 ## 已完成
+
+### T-010 M5 第二期 — 增量重渲染（改完文案重新出片）
+- **状态**: DONE（Claude 复审通过 2026-06-12，含真实联网 edge TTS 端到端验证）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **复审怎么做的（亲自跑，含真实 TTS，无虚报）**: 四套单测全过；生成真实基线（edge TTS 3段 mp3 + MP4）后，改 scene1 文案置 edited=true，起服务调 `POST /api/project/rerender` 真实重渲染（耗时 69s）。
+- **三条命门全部验证通过**: ① **增量配音是真的**——重渲后 scene2/3 的 mp3 md5 与改前完全一致（未改段没被重配），只有 scene1 mp3 更新、audio_duration 重算为 8.162 ② **失败回滚够稳**——单测模拟 MP4 失败：旧 video.mp4 md5 不变、scene1 mp3 被恢复（连增量写入的新 mp3 都回滚）、plan.json 不落盘 ③ **edited 时机正确**——MP4 成功后才清 edited，双镜像（顶层+legacy）都清回 false，失败则保留。
+- **契约/质量**: audio 汇总按全部现存段重算（segments=3/total 正确）；renders[] 用 upsert 按 kind 去重不累积；全量配音路径（only_orders=None）未动、向后兼容；TTS warning 当重渲染失败处理（避免新字幕配旧/缺失配音的错位成片，PM 认可此设计）；仍绑 127.0.0.1、debug off。
+- **施工图**: `CONTRACTS/T-010_incremental_rerender_spec.md`
 
 ### T-009 网页编辑器一键启动（Windows 本地）
 - **状态**: DONE（Claude 复审通过 2026-06-11）

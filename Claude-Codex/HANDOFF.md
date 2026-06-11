@@ -3,6 +3,63 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-12 #29] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-010 / M5 第二期增量重渲染，**通过，T-010 → DONE**（含真实联网 edge TTS 端到端验证，非 mock）。M5「改文案→重出片」闭环落地。
+**涉及文件**: 仅更新协作文档（TASKS.md T-010→DONE、STATE.md、本段）。代码未改。
+**复审怎么做的（亲自跑真实 TTS + 真实 MP4，无虚报；bundled python 3.12）**:
+- 四套单测全过。
+- **真实增量验证**：先 `run_workflow --demo-assets --clean` 出真实基线（edge 3段 mp3 + MP4），记录 scene2/3 的 mp3 md5；改 scene1 文案+置 edited=true；起服务调 `POST /api/project/rerender`（真实联网 edge，耗时 69s）。结果：**scene2/3 的 mp3 md5 改前改后完全一致**（未改段没被重配，增量是真的），只有 scene1 mp3 更新、audio_duration 重算 8.162；edited 双镜像清回 false；audio 汇总 segments=3 按全部现存段算正确；renders 无重复 mp4 条目；status=rerendered。
+- **失败回滚验证**：单测模拟 MP4 渲染失败（fake TTS 已写入新 mp3 + boom MP4）→ 旧 video.mp4 md5 不变、scene1 mp3 被恢复（连增量写入的新 mp3 都回滚）、plan.json 不落盘。
+**为什么通过**: Codex 自己点名的三条命门全部经得起真实跑——① 增量配音只动 edited 段、未改段 mp3 零触碰 ② 失败回滚靠 success 标志 + finally restore，旧产物完整保留 ③ edited 必 MP4 成功后才清。代码质量高：全量配音路径未动向后兼容、audio 按现存段重算、renders upsert 去重、TTS warning 当失败处理（避免新字幕配旧配音的错位成片，这个判断对）。
+**接口变化**: 无（复用 edited 标记 + plan.json 字段）。新增本地端点 POST /api/project/rerender。
+**下一步建议（等你拍板）**:
+1. 把 T-010 代码（tts_generate.py 增量、web_app.py rerender、测试）提交 GitHub。
+2. 选下一步：**M5 第三期**（投喂分页：提示词一键复制 + 大模型网页链接，与 T-007 file provider 复用）/ **T-007 file provider**（离线零 key）/ **M4**（素材打标签+自动匹配，护城河/最大瓶颈）。
+**给你的提醒**: 你现在本地起 `start_editor.bat` → 改文案 → 点「重新生成视频」，等约一分钟就能看到只重配改动段、整条更新的新 video.mp4。M5 的核心闭环到此完整。
+
+## [2026-06-12 #28] Codex(Dev) -> Claude(Reviewer)
+**Change**: Implemented T-010 / M5 phase 2 incremental rerender. The local editor now has `POST /api/project/rerender` and a "??????" button. After the user edits copy, rerender only re-synthesizes edited scene audio, then rerenders the whole MP4, syncs text sidecars, clears `edited` only after MP4 success, and atomically saves `plan.json`. T-010 is now REVIEW.
+
+**Files touched**:
+- Updated `tts_generate.py`
+- Updated `web_app.py`
+- Updated `tests/test_tts_generate.py`
+- Updated `tests/test_web_app.py`
+- Updated `Claude-Codex/STATE.md`, `Claude-Codex/TASKS.md`, and this handoff entry
+- Did not modify `CONTRACTS/`
+
+**Why this design**:
+- I chose scheme A from the spec: add optional `only_orders` to `generate_voiceover_audio(...)`. `only_orders=None` keeps the old full-generation behavior with `voiceover_audio.tmp/` whole-directory replacement, so T-003 callers stay compatible.
+- Incremental TTS never `rmtree`s the existing `voiceover_audio/` directory. It writes selected segments into `voiceover_audio.incremental.tmp/`, then replaces only that segment's final mp3 after successful synthesis. Unselected scene metadata and mp3 files are left untouched.
+- The top-level `audio` summary is recomputed from all existing scene `voiceover_audio` metadata whose files exist, not just from the regenerated scenes. This keeps `audio.segments` and `total_audio_duration` truthful after partial regeneration.
+- Rerender is transactional at the orchestration layer: before starting, it backs up the edited orders' mp3 files and old `video.mp4`. If TTS, MP4, sidecar sync, or any unexpected exception fails, it restores old mp3/video outputs and does not save `plan.json`. This extra backup layer specifically covers the half-success case where selected TTS succeeds but MP4 fails.
+- I treat selected-segment TTS warnings as rerender failure. Otherwise the user could get new captions/video text paired with old spoken audio, which is worse than a clear failure and retry.
+- MP4 rendering still rerenders the full video, reusing `render_mp4.render_mp4` and `run_workflow.render_scene_frames`. I did not add frame caching, background queues, multi-user logic, or LLM regeneration.
+- `edited` is cleared in both top-level `scenes` and legacy `plan.scenes` only after MP4 success. If rerender fails, `edited=true` remains so the next click can retry.
+
+**Interface changes**:
+- Added local API endpoint `POST /api/project/rerender`.
+- Added a web button "??????" with synchronous waiting state. Failure message explicitly says the old video was not damaged.
+- No schema changes. The code only fills existing `audio`, `renders`, `voiceover_audio`, and `edited` fields.
+
+**Validation**:
+- Passed: `python tests/test_llm_generate.py`
+- Passed: `python tests/test_tts_generate.py`
+- Passed: `python tests/test_render_mp4.py`
+- Passed: `python tests/test_web_app.py`
+- Passed earlier in this task: `./scripts/check_project.ps1` (it refreshed generated `output/plan.json` timestamps; I restored that unrelated generated diff afterward).
+- Manual API smoke with fake TTS + fake MP4: `POST /api/project/rerender` returned 200; only scene 1 mp3 changed, scene 2 mp3 stayed old, `edited` cleared to false, `audio.segments=2`, and `video.mp4` updated.
+
+**Validation boundary / honest note**:
+- I did not run real network `edge` TTS for T-010. The incremental behavior and failure rollback were verified with `FakeProvider`/mock MP4 so tests are deterministic and do not depend on network availability. Existing real edge integration remains through the same provider path from T-003.
+- I used the bundled Python path only to run tests because this shell has no `python` in PATH. No bundled Python path was written into project code or startup scripts.
+
+**Reviewer focus**:
+1. Check `tts_generate.generate_voiceover_audio(..., only_orders=...)` preserves full-mode behavior while doing per-segment incremental replacement.
+2. Check `web_app.rerender_project` rollback semantics: no `plan.json` save and old mp3/video restored on any failure.
+3. Check whether treating selected TTS warnings as full rerender failure matches PM intent. I chose this to avoid new captions with stale voiceover.
+4. Check the front-end copy and button interaction in `INDEX_HTML`; it is intentionally simple and synchronous for local single-user use.
+
 ## [2026-06-12 #27] Claude(PM) → Codex
 **改动**: M5 第一期已 DONE。启动 M5 第二期增量重渲染，出 T-010 规格。
 **涉及文件**:

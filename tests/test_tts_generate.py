@@ -13,13 +13,15 @@ class FakeProvider(TTSProvider):
 
     def __init__(self, fail_on: set[int] | None = None):
         self.fail_on = fail_on or set()
+        self.calls = []
 
     def synthesize(self, text: str, out_path: Path) -> float:
         order = int(out_path.stem.split("_")[-1])
+        self.calls.append(order)
         if order in self.fail_on:
             raise TTSGenerationError("forced test failure")
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(b"fake mp3")
+        out_path.write_bytes(f"fake mp3 {order}".encode("utf-8"))
         return 1.25 * order
 
 
@@ -93,6 +95,56 @@ def test_failed_run_keeps_existing_audio_files(tmp_path: Path):
     assert not (tmp_path / "voiceover_audio.tmp").exists()
 
 
+def test_incremental_voiceover_regenerates_only_selected_order(tmp_path: Path):
+    scenes = sample_scenes()
+    generate_voiceover_audio(scenes, {}, tmp_path, provider_name="fake", provider=FakeProvider())
+    audio_dir = tmp_path / "voiceover_audio"
+    scene_1 = audio_dir / "scene_01.mp3"
+    scene_2 = audio_dir / "scene_02.mp3"
+    scene_3 = audio_dir / "scene_03.mp3"
+    scene_1.write_bytes(b"old 1")
+    scene_2.write_bytes(b"old 2")
+    scene_3.write_bytes(b"old 3")
+    scenes[0]["voiceover_audio"]["audio_duration"] = 11.0
+    scenes[2]["voiceover_audio"]["audio_duration"] = 33.0
+
+    provider = FakeProvider()
+    audio = generate_voiceover_audio(scenes, {}, tmp_path, provider_name="fake", provider=provider, only_orders={2})
+
+    assert provider.calls == [2]
+    assert scene_1.read_bytes() == b"old 1"
+    assert scene_2.read_bytes() == b"fake mp3 2"
+    assert scene_3.read_bytes() == b"old 3"
+    assert scenes[0]["voiceover_audio"]["audio_duration"] == 11.0
+    assert scenes[1]["voiceover_audio"]["audio_duration"] == 2.5
+    assert scenes[2]["voiceover_audio"]["audio_duration"] == 33.0
+    assert audio == {
+        "provider": "fake",
+        "voice": "fake-voice",
+        "segments": 3,
+        "total_audio_duration": 46.5,
+    }
+
+
+def test_incremental_voiceover_failure_preserves_old_segment(tmp_path: Path):
+    scenes = sample_scenes()
+    generate_voiceover_audio(scenes, {}, tmp_path, provider_name="fake", provider=FakeProvider())
+    audio_dir = tmp_path / "voiceover_audio"
+    scene_2 = audio_dir / "scene_02.mp3"
+    scene_2.write_bytes(b"old good 2")
+    old_meta = dict(scenes[1]["voiceover_audio"])
+
+    provider = FakeProvider(fail_on={2})
+    audio = generate_voiceover_audio(scenes, {}, tmp_path, provider_name="fake", provider=provider, only_orders={2})
+
+    assert provider.calls == [2]
+    assert scene_2.read_bytes() == b"old good 2"
+    assert scenes[1]["voiceover_audio"] == old_meta
+    assert audio["segments"] == 3
+    assert audio["total_audio_duration"] == 7.5
+    assert not (tmp_path / "voiceover_audio.incremental.tmp").exists()
+
+
 if __name__ == "__main__":
     with tempfile.TemporaryDirectory() as tmp:
         base = Path(tmp)
@@ -100,4 +152,6 @@ if __name__ == "__main__":
         test_generate_voiceover_audio_continues_after_segment_failure(base / "failure")
         test_generate_voiceover_audio_none_provider_skips_audio(base / "none")
         test_failed_run_keeps_existing_audio_files(base / "failed_keeps_existing")
+        test_incremental_voiceover_regenerates_only_selected_order(base / "incremental")
+        test_incremental_voiceover_failure_preserves_old_segment(base / "incremental_failure")
     print("tts_generate tests passed")

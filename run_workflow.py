@@ -3,13 +3,12 @@ import html
 import json
 import math
 import shutil
-from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from llm_generate import LLMGenerationError, build_project_input, generate_video_content, legacy_plan_from_generation
-from render_mp4 import MP4RenderError, render_mp4
+from render_mp4 import MP4RenderError, make_render_entry, render_mp4
 from tts_generate import TTSGenerationError, generate_voiceover_audio
 
 
@@ -626,13 +625,8 @@ def write_markdown(plan: dict, compliance: dict) -> None:
 
 
 def make_render_record(plan: dict, kind: str, file: str) -> dict:
-    return {
-        "platform": plan.get("platform", "generic"),
-        "aspect_ratio": plan.get("aspect_ratio", "9:16"),
-        "kind": kind,
-        "file": file,
-        "rendered_at": datetime.now().isoformat(),
-    }
+    # renders[] 条目构造统一走 render_mp4.make_render_entry，避免契约逻辑双份实现。
+    return make_render_entry(plan, kind, file)
 
 
 def crop_cover(img: Image.Image, width: int, height: int) -> Image.Image:
@@ -956,13 +950,13 @@ def render_scene_frames_with_context(
 def render_gif_preview(plan: dict, assets: list[dict]) -> None:
     frames = []
     durations = []
-    fps = 12  # ??????????
+    fps = 12  # 补间帧率，越高越顺滑
     out_w, out_h = get_canvas_size(plan)
-    ss = 2  # ????????????????????
+    ss = 2  # 超采样：放大渲染再缩小，文字与圆角更锐利
     ctx = make_render_context(plan, ss=ss)
 
     for idx, scene in enumerate(plan["scenes"]):
-        # ????? fps ?????????
+        # 每段固定约 fps 帧：顺滑且体积可控
         seg_frames = max(8, fps)
         for frame in render_scene_frames_with_context(plan, assets, scene, idx, seg_frames, ctx):
             frames.append(frame.resize((out_w, out_h), Image.Resampling.LANCZOS))

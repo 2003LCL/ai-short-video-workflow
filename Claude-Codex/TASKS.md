@@ -5,14 +5,19 @@
 
 ## 进行中 / 待办
 
-### T-005 M3 复审收尾 cleanup（非阻塞）
-- **状态**: TODO（小修，Codex 下次顺手清，不阻塞里程碑）
-- **负责**: Codex 实现 → Claude 审查
-- **两处质量问题**（复审 T-004 时发现，功能不受影响）:
-  1. `run_workflow.py:959,961,965` GIF 函数里三行中文注释损坏成 `?????`（抽取共享函数时编码被破坏）→ 恢复成正常中文注释。
-  2. `renders[]` 构造逻辑双份实现：`run_workflow.py:628 make_render_record` 与 `render_mp4.py:47 make_render_entry` 结构完全相同 → 统一成一处（建议 run_workflow 复用 `make_render_entry`，删掉 `make_render_record`），避免契约字段变动时漏改。
+### 文案质量专项 (ADR-011 闭环后回炉)
+- **状态**: TODO（PM 出规格中）
+- **说明**: 闭环 M1→M3 已通，按 ADR-011 回炉打磨文案质量。用户明确「文案才是视频好坏的关键」。重点是真接 Claude provider 的 prompt 工程（选题角度/钩子/转化引导），把 M1 的 mock 占位文案换成高质量生成。
 
 ## 已完成
+
+### T-005 M3 复审收尾 cleanup
+- **状态**: DONE（Claude 直接修复并验证 2026-06-11）
+- **负责**: Claude（机械小修，Reviewer 直接改）
+- **修了什么**:
+  1. `run_workflow.py` GIF 函数三行中文注释乱码 `?????` → 恢复正常中文注释（grep `????` 已归零）。
+  2. `renders[]` 双份实现 → run_workflow 的 `make_render_record` 改为复用 `render_mp4.make_render_entry` 的薄包装，逻辑收敛一处；顺手删掉因此不再使用的 `datetime` import。
+- **验证**: run_workflow.py 解析通过；三套单测全过；`--skip-tts --skip-mp4` 跑通；plan.json 的 renders[] 字段经 make_render_entry 后仍贴合契约。
 
 ### T-004 MP4 渲染模块 (M3)
 - **状态**: DONE（Claude 复审通过 2026-06-11）

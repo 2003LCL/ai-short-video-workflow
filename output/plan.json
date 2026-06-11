@@ -86,13 +86,7 @@
       "effect": "slow_zoom_in",
       "edited": false,
       "start": 0,
-      "duration": 8,
-      "voiceover_audio": {
-        "file": "voiceover_audio/scene_01.mp3",
-        "audio_duration": 6.087,
-        "provider": "edge",
-        "voice": "zh-CN-XiaoxiaoNeural"
-      }
+      "duration": 8
     },
     {
       "order": 2,
@@ -102,13 +96,7 @@
       "effect": "pan_up",
       "edited": false,
       "start": 8,
-      "duration": 8,
-      "voiceover_audio": {
-        "file": "voiceover_audio/scene_02.mp3",
-        "audio_duration": 8.412,
-        "provider": "edge",
-        "voice": "zh-CN-XiaoxiaoNeural"
-      }
+      "duration": 8
     },
     {
       "order": 3,
@@ -118,20 +106,14 @@
       "effect": "cut",
       "edited": false,
       "start": 16,
-      "duration": 8,
-      "voiceover_audio": {
-        "file": "voiceover_audio/scene_03.mp3",
-        "audio_duration": 5.887,
-        "provider": "edge",
-        "voice": "zh-CN-XiaoxiaoNeural"
-      }
+      "duration": 8
     }
   ],
   "audio": {
-    "provider": "edge",
-    "voice": "zh-CN-XiaoxiaoNeural",
-    "segments": 3,
-    "total_audio_duration": 20.386
+    "provider": "none",
+    "voice": "",
+    "segments": 0,
+    "total_audio_duration": 0.0
   },
   "renders": [
     {
@@ -139,21 +121,14 @@
       "aspect_ratio": "9:16",
       "kind": "preview_html",
       "file": "preview.html",
-      "rendered_at": "2026-06-11T17:25:09.160021"
+      "rendered_at": "2026-06-11T17:44:58.893865"
     },
     {
       "platform": "generic",
       "aspect_ratio": "9:16",
       "kind": "preview_gif",
       "file": "preview.gif",
-      "rendered_at": "2026-06-11T17:25:09.160021"
-    },
-    {
-      "platform": "generic",
-      "aspect_ratio": "9:16",
-      "kind": "mp4",
-      "file": "video.mp4",
-      "rendered_at": "2026-06-11T17:26:09.758988"
+      "rendered_at": "2026-06-11T17:44:58.893865"
     }
   ],
   "plan": {
@@ -182,13 +157,7 @@
         "effect": "slow_zoom_in",
         "edited": false,
         "start": 0,
-        "duration": 8,
-        "voiceover_audio": {
-          "file": "voiceover_audio/scene_01.mp3",
-          "audio_duration": 6.087,
-          "provider": "edge",
-          "voice": "zh-CN-XiaoxiaoNeural"
-        }
+        "duration": 8
       },
       {
         "order": 2,
@@ -198,13 +167,7 @@
         "effect": "pan_up",
         "edited": false,
         "start": 8,
-        "duration": 8,
-        "voiceover_audio": {
-          "file": "voiceover_audio/scene_02.mp3",
-          "audio_duration": 8.412,
-          "provider": "edge",
-          "voice": "zh-CN-XiaoxiaoNeural"
-        }
+        "duration": 8
       },
       {
         "order": 3,
@@ -214,13 +177,7 @@
         "effect": "cut",
         "edited": false,
         "start": 16,
-        "duration": 8,
-        "voiceover_audio": {
-          "file": "voiceover_audio/scene_03.mp3",
-          "audio_duration": 5.887,
-          "provider": "edge",
-          "voice": "zh-CN-XiaoxiaoNeural"
-        }
+        "duration": 8
       }
     ],
     "subtitle_style": "premium_readable",

@@ -3,6 +3,26 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-12 #27] Claude(PM) → Codex
+**改动**: M5 第一期已 DONE。启动 M5 第二期增量重渲染，出 T-010 规格。
+**涉及文件**:
+- 新增 `CONTRACTS/T-010_incremental_rerender_spec.md`（增量重渲染施工图，验收标准在文末）
+- 更新 `TASKS.md`（T-010 → TODO 就绪、T-009 → DONE 归位）、`STATE.md`、本段
+- 未写业务代码，未改契约
+**T-010 方案怎么定的（PM 读渲染管线 + 和用户确认）**:
+- 用户最初想「配音+画面都增量」。但我读了 render_mp4.py：画面帧是 Pillow 实时画的、本来就快；MP4 是单个视频文件、无论改没改都必须整条重编码。所以「画面帧增量缓存」投入产出比极差。
+- 已向用户讲清并确认，定**务实方案**：**配音真增量**（只重配 edited=true 的段，省掉未改段的 TTS——这才是真瓶颈：最慢、要联网、可能失败）+ **画面/MP4 整体重渲染**。
+- 触发：网页「重新生成视频」按钮，**同步等待**（第一版不做后台队列/进度条，本地单用户够用）。
+**T-010 范围红线（Codex 务必守住）**:
+- **增量配音**：tts_generate 现状是全量重配（rmtree 整个目录再生成），不支持只配某几段。要新增增量能力（给 generate_voiceover_audio 加 only_orders 参数，或新函数），**只重配指定段、保留未改段旧 mp3、失败不破坏已有产物**（T-003 踩过的坑）。
+- **编排**：读 plan→找 edited 段→增量配音→复用 render_mp4+render_scene_frames 整条重渲→同步 srt/voiceover/md→**MP4 成功后**把 edited 清回 false→原子写 plan.json。任一步失败不破坏旧 video.mp4/旧 mp3/plan.json。
+- **网页**：POST /api/project/rerender + 「重新生成视频」按钮，进行中状态、同步等待（fetch 别设短超时）、成功提示、失败明确告知旧视频未被破坏。仍绑 127.0.0.1、debug off。
+- **不做**：画面帧增量缓存、后台队列、进度百分比、多用户、重新调 LLM 生成文案。不改契约。
+**接口变化**: 无（复用已有 edited 标记 + plan.json 字段）。新增本地服务端点 /api/project/rerender。
+**验证情况**: 仅文档/规格。现有流水线未动。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-002/008/015→schema→T-010 spec，实现增量配音 + rerender 编排 + 网页按钮 + 测试，完成后改 T-010 为 REVIEW 并在此写交接段。真实 edge TTS 要联网，增量配音失败要降级。
+**给 Codex 的话**: 命门是「增量配音别误删未改段的好 mp3」+「重渲失败别破坏旧 video.mp4」+「edited 必须 MP4 成功后才清」。MP4 合成慢，前端别设短超时。HANDOFF 写明你实测了真实 TTS 还是用 --skip/mock 验的哪部分。
+
 ## [2026-06-12 #26] Claude(Reviewer) → 你(人类)
 **改动**: 复审 T-009 一键启动，**通过，T-009 → DONE**。M5 第一期（T-008 文案审改 + T-009 一键启动）完整可用：双击 bat → 改文案 → 存回。
 **涉及文件**: 仅更新协作文档（TASKS.md T-009→DONE、STATE.md、本段）。代码未改。

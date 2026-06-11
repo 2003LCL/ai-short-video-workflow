@@ -5,13 +5,14 @@
 
 ## 进行中 / 待办
 
-### T-009 网页编辑器一键启动（Windows 本地）
-- **状态**: REVIEW（Codex 已实现，待 Claude 审查）
+### T-010 M5 第二期 — 增量重渲染（改完文案重新出片）
+- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
 - **负责**: Claude 出规格 → Codex 实现 → Claude 审查
-- **目标**: 双击 `start_editor.bat` 就能用：自动找 Python → 缺依赖自动装 → 起服务 → 自动开浏览器。消除「敲长命令、记 127.0.0.1」门槛。
-- **关键现实**: 依赖目前只在 Codex bundled Python（缓存目录，不稳定，禁止写死路径）；启动脚本要用系统 py/python + 首次自动 pip install，保证可移植。
-- **不改业务**: 只加启动便利层 + web_app 自动开浏览器（带 AI_VIDEO_NO_BROWSER 开关）。
-- **施工图**: `CONTRACTS/T-009_one_click_launch_spec.md`（验收标准在文末）。
+- **目标**: 网页编辑器加「重新生成视频」按钮，点了只对 edited=true 的段重新配音、整条重合成带新文案/配音/字幕的 MP4，网页同步等待看结果。让「改文案→看到新视频」闭环。
+- **务实方案（PM 已和用户确认）**: 配音真增量（只重配改过的段，省未改段 TTS）；画面帧实时画+MP4 整条重编（本来就快/本来就必须，不做帧缓存）。同步等待，不做后台队列。
+- **核心工程点**: ① tts 增量配音（只重配指定段、保留未改段旧 mp3、失败不破坏已有产物）② rerender 编排（增量配音→重渲 MP4→清 edited 标记→原子写 plan.json）③ POST /api/project/rerender + 网页按钮。
+- **不改契约**: 复用已有 edited 标记和 plan.json 字段。
+- **施工图**: `CONTRACTS/T-010_incremental_rerender_spec.md`（验收标准在文末）。
 
 ### T-007 离线文案接入 — file provider（次目标已由 PM 完成）
 - **状态**: TODO（file provider 部分待 Codex；次目标"中转地址可配置"已由 PM 完成并验证）
@@ -54,8 +55,6 @@
 - **第二期**: 增量重渲染——改一段只重跑该段配音/画面，不整条重跑。
 - **第三期**: 离线投喂分页——提示词一键复制 + 主流大模型网页链接，用户自选 AI 复制生成再回来（与 T-007 file provider 复用）。
 - **更后期**: 可视化时间轴/所见即所得预览（届时再评估引 React/Remotion，后端 API 不动）。
-
-## 已完成
 
 ### T-006 文案质量专项 — prompt 工程 + 两套可切换风格 (M1 回炉)
 - **状态**: DONE（Claude 复审通过 2026-06-11；真实 Claude 生成对比因环境无 key 另行验收）

@@ -5,13 +5,21 @@
 
 ## 进行中 / 待办
 
-### T-007 离线文案接入 — file provider（次目标已由 PM 完成）
-- **状态**: TODO（file provider 部分待 Codex；次目标"中转地址可配置"已由 PM 完成并验证）
+### T-011 M5 第三期 — 网页离线投喂页（零 key 生成文案）
+- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **目标**: 网页加「离线生成文案」区——展示提示词+一键复制+主流大模型网页链接(豆包/Kimi/通义/DeepSeek)，用户去任意 AI 网页版生成、把 JSON 贴回、解析校验后写进 plan.json。让没 key 的用户也能用真实大模型生成首版文案，零 key。
+- **复用**: `build_claude_instruction`(T-006 定稿 prompt) 生成提示词；`validate_generation`+`apply_timeline` 校验贴回的 JSON（别重写校验）；现有原子写 plan.json。JSON 宽容解析（剥 ```json/截取{…}）。
+- **数据来源**: 本期方案 A——基于现有 plan.json 的 input.shop+config 重新生成文案；无 plan.json 给清晰指引。
+- **不做**: 不调任何大模型 API（链接仅 `<a>` 跳转）、不改契约、不重写 T-006 prompt。
+- **施工图**: `CONTRACTS/T-011_offline_copy_web_spec.md`（验收标准在文末）。
+
+### T-007 离线文案接入 — file provider 命令行版（次目标已完成，主目标可选）
+- **状态**: TODO（命令行版，优先级降低——T-011 网页版覆盖了主要场景；留作无网页时的备选）
 - **负责**: Claude 出规格 → Codex 实现 file provider → Claude 审查
-- **次目标已完成（PM 直接改）**: `ClaudeProvider` 接入地址改为读 `ANTHROPIC_BASE_URL`（默认官方），中转站 key 已实测打通（用户中转站 nexus 可用）。
-- **主目标待 Codex**: `--provider file` 离线人工投喂——生成 output/llm_prompt.txt，喂任意 AI，JSON 存回 response 文件，重跑读回继续流水线。零 key。
-- **不改契约**: 只动 llm_generate.py provider 层 + run_workflow 接入。
-- **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`（验收标准在文末；注意次目标已完成，Codex 只做 file provider 部分）。
+- **次目标已完成（PM 直接改）**: `ClaudeProvider` 接入地址改为读 `ANTHROPIC_BASE_URL`（默认官方），中转站 key 已实测打通。
+- **主目标待 Codex（可选）**: `--provider file` 命令行离线投喂——生成 output/llm_prompt.txt，喂任意 AI，JSON 存回 response 文件，重跑读回。零 key。
+- **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`
 
 ## 已完成
 

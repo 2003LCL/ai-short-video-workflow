@@ -38,9 +38,11 @@ M5 后续期（占位）：第三期投喂分页、更后期可视化时间轴�
 
 **M5 第一期+第二期完整可用**：双击 `start_editor.bat` → 改文案 → 存回 → 点「重新生成视频」→ 出带新文案/配音/字幕的 MP4。店主级用户的「人工微调 + 重出片」闭环已落地。
 
-**等你拍板下一步**：可选 M5 第三期（投喂分页，与 T-007 file provider 复用）/ T-007 file provider（离线零 key）/ M4（素材打标签+自动匹配，护城河）。
+**当前焦点：M5 第三期（T-011 网页离线投喂页）已出规格，等 Codex 认领。** 用户决策「先跑完 M5 再折回 M4」。第三期=网页加「离线生成文案」区：展示提示词+一键复制+主流大模型网页链接(豆包/Kimi/通义/DeepSeek)，用户去任意 AI 网页版生成、JSON 贴回、解析校验写进 plan.json——让没 key 的用户也能用真实大模型生成首版文案。复用 build_claude_instruction(T-006 prompt)+validate_generation，不调任何 API、不改契约。施工图 `CONTRACTS/T-011_offline_copy_web_spec.md`。这是 ADR-014 file provider 的网页版（命令行版 T-007 降级为可选备选）。
 
-**T-007 离线 file provider**：次目标(中转地址可配置)已由 PM 完成；主目标(`--provider file` 人工投喂)仍待 Codex，与 M5 第三期投喂分页可复用。施工图 `CONTRACTS/T-007_offline_copy_spec.md`，ADR-014。
+**T-011 跑通后 M5 完整收尾，下一步折回 M4**（素材打标签+自动匹配，护城河/最大瓶颈）。
+
+**⚠️ 安全**：用户在对话里贴过中转站 key（已用完即弃、未落盘未提交），建议用户去后台吊销换新。
 
 **M4(素材打标签+自动匹配) 仍暂放。**
 

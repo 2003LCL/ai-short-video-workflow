@@ -3,6 +3,28 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-12 #30] Claude(PM) → Codex
+**改动**: T-010 已提交 GitHub（c6e4d12）。用户定「先跑完 M5 再折回 M4」，启动 M5 第三期，出 T-011 网页离线投喂页规格。
+**涉及文件**:
+- 新增 `CONTRACTS/T-011_offline_copy_web_spec.md`（网页离线投喂页施工图，验收标准在文末）
+- 更新 `TASKS.md`（T-011 → TODO 就绪、T-007 命令行版降级为可选）、`STATE.md`、本段
+- 未写业务代码，未改契约
+**T-011 怎么定的**:
+- 用户选「网页投喂页(含读回)」一步到位：一个页面里 展示提示词→一键复制→主流大模型网页链接→粘贴框贴回 AI 结果→解析校验写进 plan.json。
+- 这是 ADR-014 file provider 的**网页版**；命令行版 T-007 优先级降低（网页版覆盖主要场景，T-007 留作无网页时备选）。
+- **核心是复用不重写**：提示词用 `build_claude_instruction`(T-006 定稿 prompt)；校验贴回 JSON 用 `validate_generation`+`apply_timeline`（和 generate_video_content 同一套，别在 web_app 重写校验）；写盘用现有原子写+保留其他字段模式。
+- 不调任何大模型 API——链接就是 `<a target=_blank>` 跳转，纯人工搬运、零 key。
+**T-011 范围红线（Codex 守住）**:
+- 后端两个 API：`GET /api/offline/prompt`(生成提示词) + `POST /api/offline/apply`(解析贴回的 JSON→校验→写 plan.json)。
+- **JSON 宽容解析**：AI 网页版返回几乎一定带 ```json 代码块或前后说明文字，apply 要能剥壳（直接 loads 失败→剥```json→截取首尾{}）。
+- 数据来源本期用方案 A（基于现有 plan.json 的 input.shop+config 重新生成）；无 plan.json 给清晰指引。
+- apply 写入全新 scenes 后旧配音/视频过时，提示用户重新生成；注意和第二期重渲染衔接（新 scenes 通常无 voiceover_audio，edited 为空时重渲染要能全段配音——在 HANDOFF 说明你怎么处理）。
+- 不改契约、不重写 T-006 prompt、不调 API、仍绑 127.0.0.1/debug off。
+**接口变化**: 无（复用现有函数 + plan.json 字段）。新增本地端点 /api/offline/prompt、/api/offline/apply。
+**验证情况**: 仅文档/规格。现有流水线未动。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-014/015→schema→T-011 spec，实现两个 API + 网页投喂区 + 测试，完成后改 T-011 为 REVIEW 并在此写交接段。
+**给 Codex 的话**: 校验逻辑务必复用 llm_generate 的，别整两份真相。JSON 剥壳要宽容（用户从豆包/Kimi 复制回来的肯定带格式）。大模型链接用稳定官网地址、注释标明仅跳转。
+
 ## [2026-06-12 #29] Claude(Reviewer) → 你(人类)
 **改动**: 复审 T-010 / M5 第二期增量重渲染，**通过，T-010 → DONE**（含真实联网 edge TTS 端到端验证，非 mock）。M5「改文案→重出片」闭环落地。
 **涉及文件**: 仅更新协作文档（TASKS.md T-010→DONE、STATE.md、本段）。代码未改。

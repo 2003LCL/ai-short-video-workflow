@@ -2,7 +2,7 @@
 
 > 单一事实来源。任何 AI 动手前先读这里，收工前必更新这里。
 
-**最后更新**: 2026-06-11 by Claude (PM)
+**最后更新**: 2026-06-11 by Claude (Reviewer)
 ## 一句话定位
 
 一个面向个体商户和下沉市场的**短视频自动生成平台**：客户上传素材（图片/视频/文字/录音），
@@ -10,9 +10,10 @@
 
 ## 当前阶段
 
-**Stage 1 / M2 审查中**：已有本地 POC（run_workflow.py），
+**Stage 1 / M3 已 DONE，最小闭环跑通**：已有本地 POC（run_workflow.py），
 现在已接入 `llm_generate.py` 的 Provider 抽象和 `tts_generate.py` 的 TTS Provider 抽象。
-默认 `mock` LLM 可离线生成 analysis/script/scenes；TTS 默认 edge，可用 `--skip-tts` 降级跳过配音。
+默认 `mock` LLM 可离线生成 analysis/script/scenes；TTS 默认 edge，可用 `--skip-tts` 降级跳过配音；
+M3 已接入 MoviePy MP4 渲染，可用 `--skip-mp4` 跳过成片合成。
 
 ## 已有资产 (POC)
 
@@ -24,13 +25,16 @@
 
 ## 当前焦点
 
-**M1 已 DONE 并提交 GitHub（commit 7ca5cbf）。M2 已 DONE 并提交 GitHub（commit 41c18c0，本地与 origin/main 同步）。** 渲染引擎(ADR-008)、TTS(ADR-009) 选型已定。
+**M1/M2/M3 全部 DONE 并提交 GitHub（M1: 7ca5cbf，M2: 41c18c0，M3 文档: e5c6511）。** 渲染引擎(ADR-008)、TTS(ADR-009) 选型已定。
 
-**当前焦点：M3（T-004）已出规格，等 Codex 认领实现。** FFmpeg/MoviePy 出真 MP4，依赖已由 ADR-012 批准（moviepy + imageio-ffmpeg）。
-施工图 `CONTRACTS/T-004_MP4_render_spec.md`。
+**T-004 / M3 复审通过，DONE（Claude 2026-06-11）。** FFmpeg/MoviePy 出真 MP4：默认全开真实生成 `output/video.mp4`（720×1280 / 30fps / H.264+AAC / 25s），登记进 `plan.json` 顶层 `renders[]`。
+**最小可用闭环 M1→M2→M3 已跑通**，可拿自家店素材验证整条管道。
 
-**M3 必须处理的已知前提（已写进 T-004 规格的硬要求）**：语音真实时长 ≠ 画面 duration（M2 实测 scene2 配音 8.4s > 画面 8s）。
-渲染按 `effective = max(scene.duration, audio_duration + 0.6s 留白)` 拉长画面，否则配音会被切断。渲染层自算时间轴，不回写 scenes 的 start/duration。
+**遗留 T-005 cleanup（非阻塞）**：① run_workflow.py 三行 GIF 注释乱码 ② renders[] 构造逻辑在 run_workflow / render_mp4 双份实现，待统一。下次顺手清。
+
+**等你拍板下一步**：(1) 是否把 M3 代码提交 GitHub；(2) 启动哪个里程碑——M4(素材打标签+自动匹配，最大瓶颈/护城河) 还是 M5(审核 Web 界面+增量重渲染)；按 ADR-011，闭环已通，文案质量优化也可回炉。
+
+**已落实的硬前提**：语音真实时长 ≠ 画面 duration。M3 已按 `effective = max(scene.duration, audio_duration + 0.6s 留白)` 拉长画面，渲染层自算时间轴不回写 scenes，配音不被切断（实测 scene2 8.412s→9.012s）。
 
 ## 关键约束
 
@@ -42,7 +46,7 @@
 
 - [x] M1: 接真 LLM —— 输入信息 → 分析卖点/痛点/角度 → 生成脚本/分镜/口播/标题（结构化输出）✅ DONE
 - [x] M2: 接 TTS —— voiceover_segments 真正出声（edge-tts 试水）✅ DONE（已提交 GitHub 41c18c0）
-- [ ] M3: FFmpeg/Remotion 出真 MP4（替代 GIF/HTML 预览）← **当前焦点，T-004 规格就绪**
+- [x] M3: FFmpeg/Remotion 出真 MP4（替代 GIF/HTML 预览）✅ DONE（复审通过，720p H.264+AAC，配音不切断）
 - [ ] M4: 素材打标签 + 自动匹配（产品护城河，最大瓶颈）
 - [ ] M5: 审核 Web 界面 + 增量重渲染（改一段只重跑一段）
 - [ ] M6: 多平台版本输出（重渲染）

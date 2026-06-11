@@ -3,11 +3,13 @@ import html
 import json
 import math
 import shutil
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from llm_generate import LLMGenerationError, build_project_input, generate_video_content, legacy_plan_from_generation
+from render_mp4 import MP4RenderError, render_mp4
 from tts_generate import TTSGenerationError, generate_voiceover_audio
 
 
@@ -623,6 +625,16 @@ def write_markdown(plan: dict, compliance: dict) -> None:
     (OUTPUT_DIR / "video_plan.md").write_text(md, encoding="utf-8")
 
 
+def make_render_record(plan: dict, kind: str, file: str) -> dict:
+    return {
+        "platform": plan.get("platform", "generic"),
+        "aspect_ratio": plan.get("aspect_ratio", "9:16"),
+        "kind": kind,
+        "file": file,
+        "rendered_at": datetime.now().isoformat(),
+    }
+
+
 def crop_cover(img: Image.Image, width: int, height: int) -> Image.Image:
     src_w, src_h = img.size
     scale = max(width / src_w, height / src_h)
@@ -797,119 +809,162 @@ def _ken_burns_crop(img: Image.Image, width: int, height: int, effect: str, prog
     return big.resize((width, height), Image.Resampling.LANCZOS, box=box)
 
 
-def render_gif_preview(plan: dict, assets: list[dict]) -> None:
-    frames = []
-    durations = []
-    fps = 12  # 补间帧率，越高越顺滑
+def make_render_context(plan: dict, ss: int = 2) -> dict:
     out_w, out_h = get_canvas_size(plan)
-    ss = 2  # 超采样：放大渲染再缩小，文字与圆角更锐利
     width, height = out_w * ss, out_h * ss
     base_layout = get_layout(out_w, out_h)
     layout = {k: (v * ss if k != "caption_width" else width - 45 * ss) for k, v in base_layout.items()}
-    style = get_visual_style(plan)
-    accent = hex_to_rgb(style["accent"])
-    pad = layout["brand_left"]
-    n = len(plan["scenes"])
-    total = plan["duration_seconds"]
+    accent = hex_to_rgb(get_visual_style(plan)["accent"])
+    return {
+        "ss": ss,
+        "out_w": out_w,
+        "out_h": out_h,
+        "width": width,
+        "height": height,
+        "layout": layout,
+        "accent": accent,
+        "pad": layout["brand_left"],
+        "n": len(plan["scenes"]),
+        "font_brand": font_for_size(int(15 * ss), bold=True),
+        "font_title": font_for_size(layout["title_font"], bold=True),
+        "font_caption": font_for_size(layout["caption_font"], bold=True),
+        "font_meta": font_for_size(int(13 * ss)),
+        "scrim_layer": _scrim((width, height), top_strength=150, bottom_strength=225),
+        "glow_layer": _soft_light_blob(
+            (width, height), (int(width * 0.18), int(height * 0.12)), int(width * 0.5), accent, 30
+        ),
+    }
 
-    font_brand = font_for_size(int(15 * ss), bold=True)
-    font_title = font_for_size(layout["title_font"], bold=True)
-    font_caption = font_for_size(layout["caption_font"], bold=True)
-    font_meta = font_for_size(int(13 * ss))
 
-    # 预备每个场景的叠加层（与帧内插值无关的部分，整段不变），逐帧只更新进度条
-    scrim_layer = _scrim((width, height), top_strength=150, bottom_strength=225)
-    glow_layer = _soft_light_blob(
-        (width, height), (int(width * 0.18), int(height * 0.12)), int(width * 0.5), accent, 30
+def draw_scene_overlay(canvas: Image.Image, plan: dict, scene: dict, idx: int, seg_prog: float, ctx: dict) -> Image.Image:
+    ss = ctx["ss"]
+    width = ctx["width"]
+    height = ctx["height"]
+    layout = ctx["layout"]
+    accent = ctx["accent"]
+    pad = ctx["pad"]
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), ctx["scrim_layer"])
+    canvas = Image.alpha_composite(canvas, ctx["glow_layer"]).convert("RGB")
+    draw = ImageDraw.Draw(canvas)
+
+    bar_y = layout["brand_top"]
+    draw.rounded_rectangle((pad, bar_y, pad + 6 * ss, bar_y + 30 * ss), radius=3 * ss, fill=accent)
+    draw.text(
+        (pad + 18 * ss, bar_y + 4 * ss),
+        f"{plan['shop_name']} · {plan['industry']}",
+        fill=(255, 255, 255),
+        font=ctx["font_brand"],
+        stroke_width=ss,
+        stroke_fill=(0, 0, 0),
     )
 
-    def draw_overlay(canvas: Image.Image, scene: dict, idx: int, seg_prog: float) -> Image.Image:
-        canvas = Image.alpha_composite(canvas.convert("RGBA"), scrim_layer)
-        canvas = Image.alpha_composite(canvas, glow_layer).convert("RGB")
-        draw = ImageDraw.Draw(canvas)
+    title_t = min(1.0, (idx + seg_prog) / 0.6) if idx == 0 else 1.0
+    ty = layout["title_top"] + int((1 - _ease_in_out(title_t)) * 18 * ss)
+    draw.multiline_text(
+        (pad, ty),
+        wrap_by_pixel(plan["cover_text"], ctx["font_title"], layout["caption_width"]),
+        fill=(255, 255, 255),
+        font=ctx["font_title"],
+        spacing=8 * ss,
+        stroke_width=2 * ss,
+        stroke_fill=(8, 10, 16),
+    )
 
-        # 顶部品牌条
-        bar_y = layout["brand_top"]
-        draw.rounded_rectangle((pad, bar_y, pad + 6 * ss, bar_y + 30 * ss), radius=3 * ss, fill=accent)
-        draw.text(
-            (pad + 18 * ss, bar_y + 4 * ss),
-            f"{plan['shop_name']} · {plan['industry']}",
-            fill=(255, 255, 255), font=font_brand, stroke_width=ss, stroke_fill=(0, 0, 0),
-        )
+    cap_lines = wrap_by_pixel(scene["caption"], ctx["font_caption"], width - 2 * (pad + 20 * ss))
+    line_count = cap_lines.count("\n") + 1
+    cap_h = line_count * int(layout["caption_font"] * 1.5) + 36 * ss
+    panel_bottom = height - layout["caption_bottom"]
+    panel_top = panel_bottom - cap_h
+    intro = _ease_in_out(min(1.0, seg_prog / 0.25))
+    slide = int((1 - intro) * 16 * ss)
+    panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+    pdraw = ImageDraw.Draw(panel)
+    pdraw.rounded_rectangle(
+        (pad - 4 * ss, panel_top + slide, width - pad + 4 * ss, panel_bottom + slide),
+        radius=18 * ss,
+        fill=(10, 12, 18, int(150 * intro)),
+    )
+    canvas = Image.alpha_composite(canvas.convert("RGBA"), panel).convert("RGB")
+    draw = ImageDraw.Draw(canvas)
+    draw.rounded_rectangle(
+        (pad + 6 * ss, panel_top + 18 * ss + slide, pad + 12 * ss, panel_bottom - 18 * ss + slide),
+        radius=3 * ss,
+        fill=accent,
+    )
+    draw.multiline_text(
+        (pad + 26 * ss, panel_top + 18 * ss + slide),
+        cap_lines,
+        fill=(255, 255, 255),
+        font=ctx["font_caption"],
+        spacing=10 * ss,
+        stroke_width=ss,
+        stroke_fill=(6, 8, 12),
+    )
 
-        # 封面标题：首屏淡入上移，之后保持
-        title_t = min(1.0, (idx + seg_prog) / 0.6) if idx == 0 else 1.0
-        ty = layout["title_top"] + int((1 - _ease_in_out(title_t)) * 18 * ss)
-        draw.multiline_text(
-            (pad, ty),
-            wrap_by_pixel(plan["cover_text"], font_title, layout["caption_width"]),
-            fill=(255, 255, 255), font=font_title, spacing=8 * ss,
-            stroke_width=2 * ss, stroke_fill=(8, 10, 16),
-        )
+    draw.text(
+        (pad, panel_top - 26 * ss + slide),
+        f"{scene['start']:02d}-{scene['start'] + scene['duration']:02d}s",
+        fill=(218, 224, 235),
+        font=ctx["font_meta"],
+        stroke_width=ss,
+        stroke_fill=(0, 0, 0),
+    )
+    plat = str(plan["platform"])
+    plat_w = draw.textbbox((0, 0), plat, font=ctx["font_meta"])[2]
+    draw.text(
+        (width - pad - plat_w, panel_top - 26 * ss + slide),
+        plat,
+        fill=(218, 224, 235),
+        font=ctx["font_meta"],
+        stroke_width=ss,
+        stroke_fill=(0, 0, 0),
+    )
 
-        # 底部字幕面板
-        cap_lines = wrap_by_pixel(scene["caption"], font_caption, width - 2 * (pad + 20 * ss))
-        line_count = cap_lines.count("\n") + 1
-        cap_h = line_count * int(layout["caption_font"] * 1.5) + 36 * ss
-        panel_bottom = height - layout["caption_bottom"]
-        panel_top = panel_bottom - cap_h
-        # 字幕入场：每段前段轻微上滑淡入
-        intro = _ease_in_out(min(1.0, seg_prog / 0.25))
-        slide = int((1 - intro) * 16 * ss)
-        panel = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        pdraw = ImageDraw.Draw(panel)
-        pdraw.rounded_rectangle(
-            (pad - 4 * ss, panel_top + slide, width - pad + 4 * ss, panel_bottom + slide),
-            radius=18 * ss, fill=(10, 12, 18, int(150 * intro)),
-        )
-        canvas = Image.alpha_composite(canvas.convert("RGBA"), panel).convert("RGB")
-        draw = ImageDraw.Draw(canvas)
-        draw.rounded_rectangle(
-            (pad + 6 * ss, panel_top + 18 * ss + slide, pad + 12 * ss, panel_bottom - 18 * ss + slide),
-            radius=3 * ss, fill=accent,
-        )
-        draw.multiline_text(
-            (pad + 26 * ss, panel_top + 18 * ss + slide),
-            cap_lines, fill=(255, 255, 255), font=font_caption,
-            spacing=10 * ss, stroke_width=ss, stroke_fill=(6, 8, 12),
-        )
+    rail_y = layout["brand_top"] - 14 * ss
+    gap = 6 * ss
+    seg_w = (width - 2 * pad - gap * (ctx["n"] - 1)) / ctx["n"]
+    for s in range(ctx["n"]):
+        x0 = pad + s * (seg_w + gap)
+        draw.rounded_rectangle((x0, rail_y, x0 + seg_w, rail_y + 4 * ss), radius=2 * ss, fill=(40, 44, 54))
+        fill_ratio = 1.0 if s < idx else (seg_prog if s == idx else 0.0)
+        if fill_ratio > 0:
+            draw.rounded_rectangle(
+                (x0, rail_y, x0 + seg_w * fill_ratio, rail_y + 4 * ss),
+                radius=2 * ss,
+                fill=accent,
+            )
+    return canvas
 
-        # 时间码 + 平台标签
-        draw.text(
-            (pad, panel_top - 26 * ss + slide),
-            f"{scene['start']:02d}-{scene['start'] + scene['duration']:02d}s",
-            fill=(218, 224, 235), font=font_meta, stroke_width=ss, stroke_fill=(0, 0, 0),
-        )
-        plat = str(plan["platform"])
-        plat_w = draw.textbbox((0, 0), plat, font=font_meta)[2]
-        draw.text(
-            (width - pad - plat_w, panel_top - 26 * ss + slide),
-            plat, fill=(218, 224, 235), font=font_meta, stroke_width=ss, stroke_fill=(0, 0, 0),
-        )
 
-        # 顶部分段进度条，当前段随 seg_prog 平滑填充
-        rail_y = layout["brand_top"] - 14 * ss
-        gap = 6 * ss
-        seg_w = (width - 2 * pad - gap * (n - 1)) / n
-        for s in range(n):
-            x0 = pad + s * (seg_w + gap)
-            draw.rounded_rectangle((x0, rail_y, x0 + seg_w, rail_y + 4 * ss), radius=2 * ss, fill=(40, 44, 54))
-            fill_ratio = 1.0 if s < idx else (seg_prog if s == idx else 0.0)
-            if fill_ratio > 0:
-                draw.rounded_rectangle(
-                    (x0, rail_y, x0 + seg_w * fill_ratio, rail_y + 4 * ss), radius=2 * ss, fill=accent
-                )
-        return canvas
+def render_scene_frames(plan: dict, assets: list[dict], scene: dict, idx: int, n_frames: int, ss: int = 2) -> list[Image.Image]:
+    return render_scene_frames_with_context(plan, assets, scene, idx, n_frames, make_render_context(plan, ss=ss))
+
+
+def render_scene_frames_with_context(
+    plan: dict, assets: list[dict], scene: dict, idx: int, n_frames: int, ctx: dict
+) -> list[Image.Image]:
+    asset = assets[idx % len(assets)]["file"] if assets else ""
+    src = Image.open(ASSETS_DIR / asset).convert("RGB")
+    frames = []
+    for frame_idx in range(max(1, n_frames)):
+        prog = frame_idx / (n_frames - 1) if n_frames > 1 else 0.0
+        kb = _ken_burns_crop(src, ctx["width"], ctx["height"], scene["effect"], prog)
+        frames.append(draw_scene_overlay(kb, plan, scene, idx, prog, ctx))
+    return frames
+
+
+def render_gif_preview(plan: dict, assets: list[dict]) -> None:
+    frames = []
+    durations = []
+    fps = 12  # ??????????
+    out_w, out_h = get_canvas_size(plan)
+    ss = 2  # ????????????????????
+    ctx = make_render_context(plan, ss=ss)
 
     for idx, scene in enumerate(plan["scenes"]):
-        asset = assets[idx % len(assets)]["file"] if assets else ""
-        src = Image.open(ASSETS_DIR / asset).convert("RGB")
-        # 每段固定约 fps 帧：顺滑且体积可控
+        # ????? fps ?????????
         seg_frames = max(8, fps)
-        for f in range(seg_frames):
-            prog = f / (seg_frames - 1) if seg_frames > 1 else 0.0
-            kb = _ken_burns_crop(src, width, height, scene["effect"], prog)
-            frame = draw_overlay(kb, scene, idx, prog)
+        for frame in render_scene_frames_with_context(plan, assets, scene, idx, seg_frames, ctx):
             frames.append(frame.resize((out_w, out_h), Image.Resampling.LANCZOS))
             durations.append(int(scene["duration"] / seg_frames * 1000))
 
@@ -934,6 +989,7 @@ def main() -> None:
     parser.add_argument("--provider", default="mock", choices=["mock", "claude"], help="LLM provider for analysis/script/scenes.")
     parser.add_argument("--tts-provider", default="edge", choices=["edge", "aliyun", "none"], help="TTS provider for voiceover audio.")
     parser.add_argument("--skip-tts", action="store_true", help="Skip voiceover audio generation.")
+    parser.add_argument("--skip-mp4", action="store_true", help="Skip MP4 rendering.")
     args = parser.parse_args()
 
     if args.clean and OUTPUT_DIR.exists():
@@ -975,6 +1031,15 @@ def main() -> None:
     write_html(plan, assets)
     write_markdown(plan, compliance)
     render_gif_preview(plan, assets)
+    renders = [
+        make_render_record(plan, "preview_html", "preview.html"),
+        make_render_record(plan, "preview_gif", "preview.gif"),
+    ]
+    if not args.skip_mp4:
+        try:
+            renders.append(render_mp4(plan, assets, OUTPUT_DIR, render_scene_frames))
+        except MP4RenderError as exc:
+            print(f"MP4 warning: {exc}")
     (OUTPUT_DIR / "plan.json").write_text(
         json.dumps(
             {
@@ -987,6 +1052,7 @@ def main() -> None:
                 "script": generated["script"],
                 "scenes": generated["scenes"],
                 "audio": audio,
+                "renders": renders,
                 "plan": plan,
                 "compliance": compliance,
             },
@@ -1004,6 +1070,8 @@ def main() -> None:
     print(f"- {OUTPUT_DIR / 'voiceover.txt'}")
     if audio.get("segments"):
         print(f"- {OUTPUT_DIR / 'voiceover_audio'}")
+    if any(item.get("kind") == "mp4" for item in renders):
+        print(f"- {OUTPUT_DIR / 'video.mp4'}")
 
 
 if __name__ == "__main__":

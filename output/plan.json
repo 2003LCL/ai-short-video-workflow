@@ -133,6 +133,29 @@
     "segments": 3,
     "total_audio_duration": 20.386
   },
+  "renders": [
+    {
+      "platform": "generic",
+      "aspect_ratio": "9:16",
+      "kind": "preview_html",
+      "file": "preview.html",
+      "rendered_at": "2026-06-11T17:25:09.160021"
+    },
+    {
+      "platform": "generic",
+      "aspect_ratio": "9:16",
+      "kind": "preview_gif",
+      "file": "preview.gif",
+      "rendered_at": "2026-06-11T17:25:09.160021"
+    },
+    {
+      "platform": "generic",
+      "aspect_ratio": "9:16",
+      "kind": "mp4",
+      "file": "video.mp4",
+      "rendered_at": "2026-06-11T17:26:09.758988"
+    }
+  ],
   "plan": {
     "shop_name": "星河口腔",
     "industry": "口腔门诊",

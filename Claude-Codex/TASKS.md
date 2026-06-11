@@ -5,15 +5,25 @@
 
 ## 进行中 / 待办
 
-### T-004 MP4 渲染模块 (M3)
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
-- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
-- **目标**: plan.json + 配音 mp3 + 图片 → 带配音/字幕/运镜的 `output/video.mp4`，作为主交付物（GIF/HTML 保留为轻量预览）。
-- **硬要求**: 按 `scene.voiceover_audio.audio_duration` 拉长画面时长（`effective = max(duration, audio_dur + 0.6s 留白)`），配音绝不被切断。复用现有运镜/叠层逻辑，不重写、不改契约（填 v1 已预埋的 `renders[]`）。
-- **依赖**: moviepy + imageio-ffmpeg（ADR-012 已批准）。失败必须降级，不阻断其他产物。
-- **施工图**: `CONTRACTS/T-004_MP4_render_spec.md`（验收标准在文末）。
+### T-005 M3 复审收尾 cleanup（非阻塞）
+- **状态**: TODO（小修，Codex 下次顺手清，不阻塞里程碑）
+- **负责**: Codex 实现 → Claude 审查
+- **两处质量问题**（复审 T-004 时发现，功能不受影响）:
+  1. `run_workflow.py:959,961,965` GIF 函数里三行中文注释损坏成 `?????`（抽取共享函数时编码被破坏）→ 恢复成正常中文注释。
+  2. `renders[]` 构造逻辑双份实现：`run_workflow.py:628 make_render_record` 与 `render_mp4.py:47 make_render_entry` 结构完全相同 → 统一成一处（建议 run_workflow 复用 `make_render_entry`，删掉 `make_render_record`），避免契约字段变动时漏改。
 
 ## 已完成
+
+### T-004 MP4 渲染模块 (M3)
+- **状态**: DONE（Claude 复审通过 2026-06-11）
+- **负责**: Codex 实现 → Claude 审查
+- **复审怎么做的（亲自跑，无虚报）**: 三套单测全过；`--skip-tts --skip-mp4` 与 `--skip-tts` 基线正常；默认全开真实生成 `output/video.mp4`，ffmpeg 探针确认 720×1280 / 30fps / H.264+AAC / 25.00s。
+- **命门验证通过**: scene2 配音 8.412s → 画面被拉到 9.012s(=audio+0.6)，配音不被切断；scene1/3 配音短于画面保持设计 8s；`scenes[].start/duration` 仍是原始整数未被回写；总时长 25.012s 与成片一致。
+- **契约符合**: plan.json 顶层 `renders[]` 三条（preview_html/preview_gif/mp4）字段贴合 schema；MP4 失败只 warning 不阻断；video.mp4 已被 .gitignore 忽略（git check-ignore 确认）。
+- **GIF 未退化**: 运镜/叠层抽成 `make_render_context`/`draw_scene_overlay`/`render_scene_frames_with_context` 共享函数，GIF 与 MP4 共用同一套 `_ken_burns_crop` + overlay，GIF 仍按原 12fps/每段固定帧数/缩回小预览输出。
+- **MoviePy 锁定**: requirements `moviepy>=1.0.3,<2.0`，代码用 1.x API（ImageSequenceClip/set_audio/set_start/write_videofile），一致。
+- **遗留**: 两处非阻塞质量问题转 T-005 cleanup（注释乱码 + renders[] 双份实现）。
+- **施工图**: `CONTRACTS/T-004_MP4_render_spec.md`
 
 ### T-003 TTS 配音模块 (M2)
 - **状态**: DONE（功能 + 健壮性两轮复审均通过，Claude 2026-06-10）

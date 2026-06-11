@@ -15,7 +15,7 @@ if (Test-Path $BundledPython) {
   $Python = $PythonCommand.Source
 }
 
-& $Python .\run_workflow.py --demo-assets --refresh-demo-assets --clean --skip-tts
+& $Python .\run_workflow.py --demo-assets --refresh-demo-assets --clean --skip-tts --skip-mp4
 
 Write-Host ""
 Write-Host "Done. Open output\preview.html or output\preview.gif to inspect the result."

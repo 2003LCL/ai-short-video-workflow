@@ -31,5 +31,12 @@ if (Test-Path $BundledPython) {
   python .\tests\test_tts_generate.py
 }
 
+Write-Host "Running MP4 render tests..."
+if (Test-Path $BundledPython) {
+  & $BundledPython .\tests\test_render_mp4.py
+} else {
+  python .\tests\test_render_mp4.py
+}
+
 Write-Host "Checking Git status..."
 git status --short

@@ -3,6 +3,63 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 条，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-11 #15] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-004 / M3，**通过，T-004 → DONE**。最小可用闭环 M1→M2→M3 跑通，能出真 MP4 成片。两处非阻塞质量问题转 T-005 cleanup。
+**涉及文件**: 仅更新协作文档（TASKS.md T-004→DONE + 新增 T-005 cleanup、STATE.md、本段）。代码未改。
+**复审怎么做的（亲自跑，无虚报；用 bundled python 3.12，环境已装 moviepy 1.0.3 / numpy 2.3.5）**:
+- 三套单测全过：`test_render_mp4` / `test_llm_generate` / `test_tts_generate`。
+- 基线：`--skip-tts --skip-mp4`、`--skip-tts` 均正常，skip 时不出 video.mp4。
+- 默认全开真实生成 `output/video.mp4`；用 imageio-ffmpeg 自带 ffmpeg 探针确认：**720×1280 / 30fps / H.264(High) + AAC 44.1k stereo / Duration 25.00s**。
+- **命门（配音不被切断）验证通过**：用 `build_render_timeline` 复算——scene2 配音 8.412s → effective 9.012s(=audio+0.6)，scene1/3 配音短于画面保持 8s；`scenes[].start/duration` 仍是原始整数 8/8/8 未被回写；总时长 25.012s 与成片探针一致。
+- 契约：plan.json 顶层 `renders[]` 三条（preview_html/preview_gif/mp4）字段贴合 schema；MP4 失败只 warning（已读代码确认 try/except MP4RenderError 不阻断 plan.json/GIF/HTML）；`git check-ignore output/video.mp4` 确认不进仓库。
+- GIF 未退化：运镜/叠层已抽成 `make_render_context`/`draw_scene_overlay`/`render_scene_frames_with_context`，GIF 与 MP4 共用同一套 `_ken_burns_crop`+overlay，GIF 仍走原 12fps/每段固定帧数/缩回小预览。
+**为什么通过**: 时长命门、契约符合度、失败降级、GIF 复用四个重点全部经得起跑。MoviePy 锁 `>=1.0.3,<2.0` 与实际 1.x API（ImageSequenceClip/set_audio/set_start/write_videofile）一致。Codex 自报的验证与我亲跑结果吻合，无虚报。
+**发现两处非阻塞质量问题（转 T-005 cleanup，不卡里程碑——经你确认）**:
+1. `run_workflow.py:959,961,965` GIF 函数三行中文注释损坏成 `?????`（抽取共享函数时编码被破坏）。
+2. `renders[]` 构造逻辑双份实现：`run_workflow.py:628 make_render_record` 与 `render_mp4.py:47 make_render_entry` 结构相同，应统一一处避免契约字段变动时漏改。
+**接口变化**: 无（CONTRACTS 未动，Codex 正确地只填了已存在的 `renders[]`）。
+**下一步建议（等你拍板）**:
+1. 是否把 M3 代码（render_mp4.py 等）提交 GitHub。当前工作区有：新增 render_mp4.py / tests/test_render_mp4.py，改动 run_workflow.py / requirements.txt / .gitignore / scripts/*.ps1 + 协作文档。
+2. 选下一个里程碑：**M4**（素材打标签+自动匹配，产品护城河、最大瓶颈）还是 **M5**（审核 Web 界面+增量重渲染）。
+3. 按 ADR-011，闭环已通，可考虑回炉做「文案质量」专项（真接 Claude provider 的 prompt 打磨）——用户此前明确文案才是视频好坏的关键。
+4. T-005 cleanup 可让 Codex 在下次开工时顺手清掉。
+**给你的提醒**: 你现在可以直接打开 `output/video.mp4` 看成片效果——这是 M3 的核心目的，确认带配音/字幕/运镜的整条视频是否够用。
+
+## [2026-06-11 #14] Codex(Dev) → Claude(Reviewer)
+**改动**: 实现 T-004 / M3 MP4 渲染模块。新增 `render_mp4.py`，把 `plan.json + voiceover_audio mp3 + 图片素材` 合成为 `output/video.mp4`，接入 `run_workflow.py`，并把产物登记进顶层 `renders[]`。T-004 已改为 REVIEW。
+
+**涉及文件**:
+- 新增 `render_mp4.py`
+- 新增 `tests/test_render_mp4.py`
+- 修改 `run_workflow.py`
+- 修改 `requirements.txt`（新增 `moviepy>=1.0.3,<2.0`、`imageio-ffmpeg>=0.4.9`）
+- 修改 `.gitignore`（显式忽略 `output/video.mp4`）
+- 修改 `scripts/run_demo.ps1`（smoke test 加 `--skip-mp4`）
+- 修改 `scripts/check_project.ps1`（加入 MP4 render tests）
+- 更新 `Claude-Codex/STATE.md`、`Claude-Codex/TASKS.md`、本交接段
+- 未修改 `CONTRACTS/`
+
+**为什么这么做**:
+- **时长规则**：`render_mp4.py` 用 `effective = max(scene.duration, voiceover_audio.audio_duration + 0.6)` 构建 MP4 专用时间轴，逐段累加 start；不回写 `scenes[].start/duration`。实测默认 demo 的 MP4 从设计 24s 拉到约 25s，避免 scene2 8.412s 口播被 8s 画面切断。
+- **复用 GIF 视觉逻辑**：把 `render_gif_preview()` 内的运镜/叠层逻辑抽成 `make_render_context()`、`draw_scene_overlay()`、`render_scene_frames_with_context()`、`render_scene_frames()`。GIF 与 MP4 共用 `_ken_burns_crop` 和同一套 overlay 绘制函数；GIF 仍按原来的 12fps/每段固定帧数/缩回小预览输出。
+- **MoviePy API**：实际安装并验证的是 `moviepy 1.0.3`，使用 1.x API：`ImageSequenceClip(frames, fps=fps)`、`AudioFileClip(...).set_start(...)`、`CompositeAudioClip(...).set_duration(...)`、`video_clip.set_audio(...)`、`write_videofile(...)`。帧传入 MoviePy 前转为 `numpy.array(PIL.Image.convert("RGB"))`，因为 1.x 需要数组的 `shape`。
+- **失败降级**：`run_workflow.py` 捕获 `MP4RenderError`，只打印 `MP4 warning`，不阻断 GIF/HTML/SRT/plan.json。`render_mp4.py` 先写 `video.tmp.mp4`，成功后 `os.replace` 到 `video.mp4`；失败时删除临时文件，不删旧 `video.mp4`。
+- **renders[]**：`run_workflow.py` 写 `preview_html`、`preview_gif`，MP4 成功时追加 `kind:"mp4", file:"video.mp4"`，字段按 schema 已有契约。
+
+**接口变化**: 无。只填充 `renders[]`，没有改 `CONTRACTS/video_project.schema.json`。
+
+**验证情况**:
+- 通过：`python tests/test_render_mp4.py`
+- 通过：`python tests/test_llm_generate.py`
+- 通过：`python tests/test_tts_generate.py`
+- 通过：`python run_workflow.py --demo-assets --clean --skip-tts --skip-mp4`
+- 通过：`python run_workflow.py --demo-assets --clean --skip-tts`，生成静音 `output/video.mp4`，时长 24s，720x1280 H.264。
+- 通过：`python run_workflow.py --demo-assets --clean`，默认 edge TTS + MP4 成功，生成 `output/video.mp4`，ffmpeg 检查有 H.264 视频流 + AAC 音频流，时长约 25s，`plan.json` 的 `renders[]` 含 `preview_html` / `preview_gif` / `mp4`。
+- 通过：`.\scripts\check_project.ps1`（内部 smoke 使用 `--skip-tts --skip-mp4`，随后跑 LLM/TTS/MP4 逻辑测试）。
+- 注意：验证中曾把读取 `output/plan.json` 和 `run_workflow.py --clean` 并行执行，Windows 文件锁导致一次 `PermissionError`；改为顺序执行后通过。这是验证编排问题，不是代码路径问题。
+
+**下一步建议**: Claude 重点复审三件事：1) `effective` 时间轴是否完全满足“不切配音”；2) GIF 是否确实仍走同一 overlay 逻辑且未退化；3) MoviePy 1.x API 与 requirements 锁定是否一致。若要进一步压缩渲染耗时/内存，可后续再优化为流式写帧，本轮为先打通闭环。
+
 ## [2026-06-11 #13] Claude(PM) → Codex
 **改动**: 确认 M2 已在 GitHub（无需重复提交）；启动 M3，产出 T-004 MP4 渲染任务规格 + 批准渲染依赖。Codex 可据此开工。
 **涉及文件**:

@@ -1,7 +1,27 @@
 # 交接说明 (HANDOFF.md)
 
-> 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 条，就能跟上思路。
+> 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
+
+## [2026-06-11 #16] Claude(PM) → Codex
+**改动**: M3 代码已提交 GitHub；完成 T-005 cleanup；启动文案质量专项 T-006，产出规格 + 升级契约 + 记 ADR-013。
+**涉及文件**:
+- 提交并推送 M3 代码（commit d971896：render_mp4.py 等）与 T-005 cleanup（commit 7c529e1）
+- 新增 `CONTRACTS/T-006_copy_quality_spec.md`（文案专项施工图，Codex 必读，验收标准在文末）
+- 升级 `CONTRACTS/video_project.schema.json`（config 加可选 `copy_style` 枚举，向后兼容）
+- 更新 `DECISIONS.md`（+ADR-013：文案专项=prompt 工程 + 两套风格 + copy_style 契约升级 + mock 一并升级 + 真实生成验收）
+- 更新 `TASKS.md`（T-005→DONE、文案专项具体化为 T-006 就绪）、`STATE.md`、本段
+**T-005 cleanup 我直接修了（机械小修，经用户确认走快路径）**: ① 恢复 run_workflow.py GIF 函数三行损坏的中文注释；② renders[] 构造统一走 `render_mp4.make_render_entry`，删除重复的 `make_render_record` 实现体与不再使用的 datetime import。已验证：三套单测过、解析过、--skip-tts --skip-mp4 跑通、renders[] 字段仍贴合契约。
+**为什么这么设计 T-006**:
+- **抓真正的瓶颈**：读了 llm_generate.py，当前 `build_claude_instruction` 的 prompt 极单薄（只讲 JSON 结构约束，零文案创作指导）——这才是文案平庸的根因，不是模型不行。专项核心 = 重写这个 prompt，不是改架构。
+- **两套风格按 industry 自动判定**：用户选了「两套可切换」。医疗/教育→professional_trust，餐饮/零售/维修等下沉生活服务→punchy_local；config 显式 copy_style 覆盖。降低客户门槛，也咬合 ADR-002 半自动定位与 M5 编辑器可改文案。
+- **mock 一并升级**：用户决策，让离线 demo 也展示像样文案，不只在花 key 时才看得到效果。
+- **契约只加可选字段**：copy_style 是可选枚举，旧 config 无此字段走自动判定，向后兼容，PM 主动升级并记 ADR-013，Codex 不要再动契约。
+- **验收靠真实生成 + 人判**：文案好坏无法自动化测试。自动化只测结构合法/风格注入/两套确实不同；真实 Claude 生成对比留到复审环节由用户主观判断（用户决策）。
+**接口变化**: 升级 schema（config.copy_style 可选字段，ADR-013）。Codex 按新字段消费即可，不要再改契约。
+**验证情况**: 仅文档/契约/规格 + T-005 机械修复（已验证如上）。M1/M2/M3 主流程未动仍可运行。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-011/013→schema(copy_style)→T-006 spec，重写 `build_claude_instruction` + 实现 copy_style 解析 + 升级 mock 两套风格 + 补测试，完成后改 T-006 为 REVIEW 并在此写交接段。
+**给 Codex 的话**: 这个任务的价值全在 prompt 写得好不好，别只满足于「结构跑通」。真实 Claude 别用真 key 跑（避免 key 进仓库/日志），把真实生成验证留给复审。copy_style 自动判定的 industry 关键词列表写成常量、测试覆盖边界。
 
 ## [2026-06-11 #15] Claude(Reviewer) → 你(人类)
 **改动**: 复审 T-004 / M3，**通过，T-004 → DONE**。最小可用闭环 M1→M2→M3 跑通，能出真 MP4 成片。两处非阻塞质量问题转 T-005 cleanup。

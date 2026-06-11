@@ -80,7 +80,12 @@
         "visual_style": {"type": "string", "enum": ["premium_luxe", "clean_clinic", "warm_local", "bold_product"]},
         "duration_seconds": {"type": "integer", "minimum": 15, "maximum": 45},
         "platform": {"type": "string", "description": "目标平台，影响版本派生"},
-        "compliance_mode": {"type": "string", "enum": ["", "medical"], "description": "医疗模式触发风险词强校验"}
+        "compliance_mode": {"type": "string", "enum": ["", "medical"], "description": "医疗模式触发风险词强校验"},
+        "copy_style": {
+          "type": "string",
+          "enum": ["", "punchy_local", "professional_trust"],
+          "description": "【M1·文案专项】文案调性：punchy_local(下沉口语强钩子) / professional_trust(专业克制信任感)。为空时由 industry 自动判定。向后兼容，旧 config 无此字段即走自动判定。"
+        }
       }
     },
 

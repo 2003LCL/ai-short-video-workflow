@@ -2,7 +2,7 @@
 
 > 单一事实来源。任何 AI 动手前先读这里，收工前必更新这里。
 
-**最后更新**: 2026-06-11 by Claude (Reviewer)
+**最后更新**: 2026-06-11 by Claude (PM)
 ## 一句话定位
 
 一个面向个体商户和下沉市场的**短视频自动生成平台**：客户上传素材（图片/视频/文字/录音），
@@ -30,9 +30,13 @@ M3 已接入 MoviePy MP4 渲染，可用 `--skip-mp4` 跳过成片合成。
 **T-004 / M3 复审通过，DONE（Claude 2026-06-11）。** FFmpeg/MoviePy 出真 MP4：默认全开真实生成 `output/video.mp4`（720×1280 / 30fps / H.264+AAC / 25s），登记进 `plan.json` 顶层 `renders[]`。
 **最小可用闭环 M1→M2→M3 已跑通**，可拿自家店素材验证整条管道。
 
-**遗留 T-005 cleanup（非阻塞）**：① run_workflow.py 三行 GIF 注释乱码 ② renders[] 构造逻辑在 run_workflow / render_mp4 双份实现，待统一。下次顺手清。
+**T-005 cleanup 已 DONE（注释乱码 + renders[] 双份实现已修，7c529e1）。**
 
-**等你拍板下一步**：(1) 是否把 M3 代码提交 GitHub；(2) 启动哪个里程碑——M4(素材打标签+自动匹配，最大瓶颈/护城河) 还是 M5(审核 Web 界面+增量重渲染)；按 ADR-011，闭环已通，文案质量优化也可回炉。
+**等你拍板下一步**：M3 代码已提交 GitHub（d971896），T-005 cleanup 已 DONE 并提交（7c529e1）。
+
+**当前焦点：T-006 文案质量专项已出规格，等 Codex 认领实现。** 按 ADR-011/013 回炉打磨文案——重写 `build_claude_instruction` 的 prompt（当前太单薄，是文案平庸的根因），加两套可切换风格(punchy_local/professional_trust，按 industry 自动判定)，mock 一并升级。契约已加 config.copy_style（ADR-013，向后兼容）。施工图 `CONTRACTS/T-006_copy_quality_spec.md`。
+
+**M4(素材打标签+自动匹配) / M5(审核Web界面+增量重渲染) 暂放一放**，先把文案质量这个核心竞争力打磨好。
 
 **已落实的硬前提**：语音真实时长 ≠ 画面 duration。M3 已按 `effective = max(scene.duration, audio_duration + 0.6s 留白)` 拉长画面，渲染层自算时间轴不回写 scenes，配音不被切断（实测 scene2 8.412s→9.012s）。
 

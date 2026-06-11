@@ -5,9 +5,14 @@
 
 ## 进行中 / 待办
 
-### 文案质量专项 (ADR-011 闭环后回炉)
-- **状态**: TODO（PM 出规格中）
-- **说明**: 闭环 M1→M3 已通，按 ADR-011 回炉打磨文案质量。用户明确「文案才是视频好坏的关键」。重点是真接 Claude provider 的 prompt 工程（选题角度/钩子/转化引导），把 M1 的 mock 占位文案换成高质量生成。
+### T-006 文案质量专项 — prompt 工程 + 两套可切换风格 (M1 回炉)
+- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 复审（含真实 Claude 生成对比）
+- **目标**: 重写 `build_claude_instruction` 的 prompt，从「只讲 JSON 格式」升级为「真正会写带货文案」。这是产品核心竞争力（用户多次强调文案才是视频好坏的关键）。
+- **两套风格**: `punchy_local`(下沉口语强钩子) / `professional_trust`(专业克制信任感)，按 `copy_style` 选，空时按 industry 自动判定。mock 占位文案一并升级。
+- **不改契约**: copy_style 字段 PM 已加进 schema（ADR-013）。
+- **验收**: 自动化测结构/风格注入/两套不同；真实 Claude 生成对比留给复审，由用户主观判断质量提升。
+- **施工图**: `CONTRACTS/T-006_copy_quality_spec.md`（验收标准在文末）。
 
 ## 已完成
 

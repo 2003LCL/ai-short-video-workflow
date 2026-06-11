@@ -82,6 +82,20 @@
 - **未决细节**: MoviePy 1.x/2.x API 有差异，Codex 需在 requirements.txt 锁定版本下限并在 HANDOFF 写明所用 API。
 - **状态**: 采纳（落实 ADR-008，供 T-004/M3 施工）
 
+## ADR-013 | 文案质量专项：升级 prompt 工程 + 两套可切换文案风格 + 契约加 copy_style
+- **决策**:
+  1. 文案专项的核心是**重写 `build_claude_instruction` 的 prompt**——从「只讲 JSON 格式约束」升级为「真正会写带货文案的创作提示词」（钩子、痛点、卖点、转化引导、平台口语化）。这是产品核心竞争力所在，不是改架构。
+  2. 提供**两套文案风格**：`punchy_local`(下沉口语、前3秒强钩子、痛点直给、强转化引导) 与 `professional_trust`(专业克制、建立信任、少夸张)，prompt 按风格注入不同创作准则。
+  3. 契约升级(video_project.schema.json)：config 新增可选 `copy_style` 枚举(`""`/`punchy_local`/`professional_trust`)。**为空时按 industry 自动判定**（医疗/教育/培训 → professional_trust；餐饮/零售/维修/美业/生活服务 → punchy_local）；config 显式指定则覆盖自动判定。向后兼容，旧 config 无此字段走自动判定。
+  4. **mock 占位文案一并升级**：mock 也按 copy_style 产出两套风格的占位文案，让离线 demo 也能展示像样效果（用户决策）。
+  5. **验收方式**：用真实 Claude API key 跑 claude provider 生成几条真实文案，人工对比 mock 占位文案，由用户主观判断质量是否提升（文案好坏无法自动化测试，用户决策）。
+- **理由**:
+  - 用户多次明确「真正决定视频好坏的是文案内容质量」，而非配音/渲染花哨度（HANDOFF #10 留痕）。当前 `build_claude_instruction` 的 prompt 极单薄，Claude 只会产出和 mock 同档次的「正确但平庸」文案——这是当前最大的质量瓶颈。
+  - 两套风格咬合产品定位：下沉市场餐饮/零售用强钩子口语，医疗/教育用专业信任感。按 industry 自动判定降低客户使用门槛，显式 copy_style 留给需要微调的场景（也契合 ADR-002「半自动+人工品控」与 M5 编辑器可改文案）。
+  - 闭环已通(M1→M3)，符合 ADR-011「闭环后回炉做文案」的时机。
+- **接口变化**: 升级 schema（config.copy_style 可选字段）。这是 PM 主动升级并记入本 ADR，Codex 按新字段实现即可，不要再改契约。
+- **状态**: 采纳（落实 ADR-011 文案回炉；供 T-006 施工）
+
 ---
 
 ## 待定 (需要你或后续调研拍板)

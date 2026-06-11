@@ -38,5 +38,12 @@ if (Test-Path $BundledPython) {
   python .\tests\test_render_mp4.py
 }
 
+Write-Host "Running web editor tests..."
+if (Test-Path $BundledPython) {
+  & $BundledPython .\tests\test_web_app.py
+} else {
+  python .\tests\test_web_app.py
+}
+
 Write-Host "Checking Git status..."
 git status --short

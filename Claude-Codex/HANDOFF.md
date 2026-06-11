@@ -3,6 +3,80 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-11 #24] Claude(PM) → Codex
+**改动**: T-008 复审通过后，出 T-009 一键启动规格（用户反馈「打开方式太复杂」）。
+**涉及文件**:
+- 新增 `CONTRACTS/T-009_one_click_launch_spec.md`（一键启动施工图）
+- 更新 `TASKS.md`（T-009 → TODO 就绪）、本段
+- 未写业务代码，未改契约
+**为什么做 T-009（用户原话「这个打开方式也太复杂了」）**:
+- T-008 启动要手敲长命令 + 手动开浏览器，店主级用户门槛太高。目标：双击 `start_editor.bat` 自动找 Python→装依赖→起服务→开浏览器。
+- **关键现实（已 PM 查证，写进规格）**: 依赖目前只装在 Codex bundled Python（`.cache\codex-runtimes\...`，是工具缓存目录，不稳定，**禁止写死该路径**）；系统有 `py.exe` 但大概率没装项目依赖。所以一键启动必须用系统 py/python + 首次自动 `pip install -r requirements.txt`，保证可移植、换机器能跑。
+- web_app.py 加自动开浏览器（threading.Timer 延迟触发，带 `AI_VIDEO_NO_BROWSER=1` 开关避免测试弹窗）。
+**关于上线（已向用户解释，留痕给后续）**: 用户问「怎么上线推广 / 127.0.0.1 会不会变」。已说明：现在是本地自测版（127.0.0.1 只有本机能开、不会变但不是给客户的）；上线要经 ①功能补全(网页端上传→生成→改→出片) ②多用户+账号+数据库 ③部署到云服务器+域名+ICP备案 ④商业化。**最大工程难点**：视频渲染(MoviePy/ffmpeg)极吃服务器资源，多人同时生成需任务队列+按需扩容，是上线阶段主要成本。用户当前选择「先做一键启动」自用顺手，上线是后话。
+**接口变化**: 无。
+**验证情况**: 仅文档/规格。
+**下一步建议**: Codex 读 PROTOCOL→STATE→本段→ADR-015→T-009 spec，实现 `start_editor.bat` + web_app.py 自动开浏览器增强 + README 说明，完成后改 T-009 为 REVIEW 并在此写交接段。**务必本机实跑 .bat 验证**（脚本难做单测），把实测情况写进 HANDOFF。
+**给 Codex 的话**: 别写死 bundled Python 路径（会变）。.bat 开头 `chcp 65001` 防中文乱码、结尾 pause 防窗口一闪而过。自动开浏览器要 Timer 延迟、且 run 之前注册，否则浏览器先开连不上。
+
+## [2026-06-11 #23] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-008 / M5 网页编辑器第一期，**通过，T-008 → DONE**。M5 第一期「人工微调文案」落地，是用户必备需求。
+**涉及文件**: 仅更新协作文档（TASKS.md T-008→DONE、STATE.md、本段）。代码未改。
+**复审怎么做的（亲起真实服务 curl 实测，不只跑 test_client，无虚报；bundled python 3.12 + flask 3.1.3）**:
+- 四套单测全过：test_web_app / test_llm_generate / test_tts_generate / test_render_mp4。
+- 真起 `web_app.py`（端口 5051），curl 实测：GET /api/project 返回店名/3场景/字幕正确；GET / 首页 HTML 200。
+- POST /api/project/copy 真实保存，故意在 payload 里塞 `start:999/duration:999` → 落盘 plan.json 仍是原值 0/8（**篡改 timeline 无效**，从 payload 字段白名单源头杜绝）。
+- 双 scenes 镜像：顶层 `scenes` 与 legacy `plan.scenes` 都同步更新为新文案；改过的 scene `edited=true`、文案未变的不置位。
+- 字段保护：analysis/audio/renders/compliance 原样保留（后端「读现有 plan.json→只改文案→写回」，前端无法整体覆盖）。
+- 文本同步：captions.srt / voiceover_segments/scene_01.txt / video_plan.md 都同步更新为新文案（复用 run_workflow.write_srt/write_voiceover_files/write_markdown，临时切 OUTPUT_DIR 后 finally 还原）。
+- 空字段提交被拒，返回字段级中文错误；服务绑 127.0.0.1、debug=False、plan.json 用 tempfile+replace 原子写。
+**为什么通过**: Codex 自己点名要审的四条红线（字段白名单、双镜像同步、edited、start/duration 不被改）全部经得起真实服务验证；契约未动（schema 未改，只读写已有字段）；安全（仅本机、无 debug）；自报验证与我亲跑结果吻合，无虚报。代码质量高，校验/错误处理/原子写都到位。
+**接口变化**: 无（CONTRACTS 未动）。新增本地服务端点 GET /api/project、POST /api/project/copy，属应用层非数据契约。
+**下一步建议（等你拍板）**:
+1. 是否把 T-008 代码（web_app.py、tests/test_web_app.py、README/requirements/check_project 改动）提交 GitHub。
+2. 选下一步：**M5 第二期**（增量重渲染——改完一段只重跑该段配音/画面）/ **M5 第三期**（投喂分页，与 T-007 file provider 复用）/ **T-007 file provider**（离线零 key 投喂）/ **M4**（素材打标签+自动匹配）。
+3. 你现在就可以本地起 `web_app.py` 打开 http://127.0.0.1:5000 试用文案审改——这是你反复强调的「人工微调文案」必备需求的第一个可用版本。
+**给你的提醒**: 第一期改完文案后，配音/视频不会自动更新（页面已明确提示）。「改一段只重跑一段」是第二期增量重渲染的事。
+
+## [2026-06-11 #22] Codex(Dev) -> Claude(Reviewer)
+**Change**: Implemented T-008 / M5 web editor phase 1. The local Flask page reads `output/plan.json`, lets the user edit script copy plus scene captions/voiceovers, saves the allowed copy fields back to plan.json, and syncs text sidecar outputs. T-008 is now REVIEW.
+
+**Files touched**:
+- Added `web_app.py`
+- Added `tests/test_web_app.py`
+- Updated `requirements.txt` with `flask>=3.0.0`
+- Updated `scripts/check_project.ps1` to run web editor tests
+- Updated `README.md` with local editor startup instructions
+- Updated `Claude-Codex/STATE.md`, `Claude-Codex/TASKS.md`, and this handoff entry
+- Did not modify `CONTRACTS/`
+
+**Why this design**:
+- The backend uses a patch-style save: read the existing `plan.json`, update only allowlisted copy fields, then write it back. This avoids letting the browser overwrite the whole project and accidentally drop or mutate `analysis`, `audio`, `renders`, `compliance`, `config`, or `input`.
+- The API surface is intentionally small: `GET /api/project` returns a compact copy-editing view; `POST /api/project/copy` accepts only `script.topic`, `script.cover_text`, `script.titles`, `script.post_copy`, `script.bgm_suggestion`, and `scenes[].order/caption/voiceover`. Extra fields such as `start` and `duration` are ignored by construction.
+- Save updates both mirrors: top-level `scenes` and legacy `plan.scenes`. Scenes are matched by `order`. If caption or voiceover actually changes, both mirrors get `edited=true`, preserving the future hook for incremental rerendering.
+- Text side effects reuse existing workflow functions instead of duplicating logic: `run_workflow.write_srt`, `write_voiceover_files`, and `write_markdown`. They consume the legacy plan, so `project["plan"]` remains the sync source for `captions.srt`, `voiceover.txt`, `voiceover_segments/*.txt`, and `video_plan.md`.
+- Phase 1 deliberately does not rerender mp3/GIF/MP4. The page and API success message both tell the user that audio and video must be regenerated before the final media reflects copy edits.
+- The server runs with `app.run(host="127.0.0.1", port=5000, debug=False)`. Port can be changed with `AI_VIDEO_WEB_PORT`; it never binds `0.0.0.0`.
+
+**Interface changes**: No CONTRACTS/schema changes. New local service endpoints:
+- `GET /api/project` returns `{ok, project}` where project is the copy-editor view.
+- `POST /api/project/copy` accepts `{script, scenes}` and saves copy-only updates; success returns the updated editor view plus the audio/video regeneration notice.
+
+**Validation**:
+- Passed: `python tests/test_web_app.py`
+- Passed: `python tests/test_llm_generate.py`
+- Passed: `python tests/test_tts_generate.py`
+- Passed: `python tests/test_render_mp4.py`
+- Passed: `./scripts/check_project.ps1` including key scan, demo smoke, LLM/TTS/MP4/web tests.
+- Passed service smoke: started `python web_app.py`, then `http://127.0.0.1:5000/api/project` returned project data.
+- Passed browser smoke: opened `http://127.0.0.1:5000`; the page rendered with Chinese title/header and Chinese field labels for topic, cover copy, title options, post copy, BGM suggestion, scene caption, and scene voiceover. 3 scenes rendered, and the status said the project was loaded.
+- Note: `./scripts/check_project.ps1` refreshes generated timestamps in `output/plan.json`; timestamps were restored. A remaining final-newline diff in `output/plan.json` is only a smoke-test artifact, not a business change.
+
+**Next step recommendation**:
+1. Review `web_app.py` for allowlisted fields, mirror sync, `edited=true`, `start/duration` ignore behavior, and preservation of `analysis/audio/renders/compliance`.
+2. During review, send a POST payload containing fake `start/duration` values and verify both scene mirrors keep their original timeline.
+3. If accepted, mark T-008 DONE. The next spec should cover phase 2: regenerate only edited scenes' audio/video.
+
 ## [2026-06-11 #21] Claude(PM) → Codex
 **改动**: 文案 prompt 已定稿提交（07b1d8e）。启动 M5 网页编辑器，定技术栈(ADR-015) + 出第一期 T-008 文案审改规格。
 **涉及文件**:

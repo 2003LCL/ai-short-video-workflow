@@ -109,6 +109,22 @@ Supported visual styles: `premium_luxe`, `clean_clinic`, `warm_local`, `bold_pro
 - `output/preview.gif`: lightweight visual preview.
 - `output/preview.html`: configurable-aspect-ratio HTML preview.
 
+## Local Copy Editor
+
+After generating `output/plan.json`, start the local review page:
+
+```powershell
+& "C:\Users\LCL\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" .\web_app.py
+```
+
+Then open:
+
+```text
+http://127.0.0.1:5000
+```
+
+The first editor phase only changes copy fields in `plan.json`. It also syncs `captions.srt`, `voiceover.txt`, `voiceover_segments/*.txt`, and `video_plan.md`. Existing audio and video files need to be regenerated before they reflect the edited copy.
+
 ## Current Capabilities
 
 - Low material threshold: works with 1-5 images.

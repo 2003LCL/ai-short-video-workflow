@@ -5,12 +5,13 @@
 
 ## 进行中 / 待办
 
-### T-006b 文案 prompt 二次升级（PM 直接改，已真实验证 + 定稿）
-- **状态**: DONE（PM 改 + 真实中转 key 双风格验证 + 用户定稿 2026-06-11）
-- **负责**: Claude（PM 直接改 prompt 内容，属文案创作能力非工程实现，走快路径）
-- **改了什么**: 大改 `build_claude_instruction` 主指令 + 两套风格规则。三轮迭代后定稿的核心规则：①「个体户只给一句话，吸引人的文案是 AI 的活，复述输入=失败」②「创意在于怎么说、不在编造事实」③「先卖体验、优惠最多提一两次垫最后」④**「每个场景必须推进到新信息，禁止换皮重复同一角度，给视频层次」**（治本规则，同时解决餐饮"三句不离钱"和口腔"三句不离未知"）。
-- **真实验证（中转 key 双风格）**: 餐饮 punchy（勾馋勾场景、优惠垫后）+ 口腔 trust（钩子→知识点→做法→破除误区→引导，有层次有信息增量），用户认可。
-- **定位共识（重要）**: prompt 只把文案稳定顶到「80 分底稿」，LLM 生成有随机性、不可能每条完美。最后 20 分的微调 + 偶尔失手的兜底，靠 M5 人工编辑。再盲调 prompt 边际收益递减——用户已决策接受波动、定稿、把精力转 M5。
+### T-009 网页编辑器一键启动（Windows 本地）
+- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **目标**: 双击 `start_editor.bat` 就能用：自动找 Python → 缺依赖自动装 → 起服务 → 自动开浏览器。消除「敲长命令、记 127.0.0.1」门槛。
+- **关键现实**: 依赖目前只在 Codex bundled Python（缓存目录，不稳定，禁止写死路径）；启动脚本要用系统 py/python + 首次自动 pip install，保证可移植。
+- **不改业务**: 只加启动便利层 + web_app 自动开浏览器（带 AI_VIDEO_NO_BROWSER 开关）。
+- **施工图**: `CONTRACTS/T-009_one_click_launch_spec.md`（验收标准在文末）。
 
 ### T-007 离线文案接入 — file provider（次目标已由 PM 完成）
 - **状态**: TODO（file provider 部分待 Codex；次目标"中转地址可配置"已由 PM 完成并验证）
@@ -20,14 +21,25 @@
 - **不改契约**: 只动 llm_generate.py provider 层 + run_workflow 接入。
 - **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`（验收标准在文末；注意次目标已完成，Codex 只做 file provider 部分）。
 
+## 已完成
+
+### T-006b 文案 prompt 二次升级（PM 直接改，已真实验证 + 定稿）
+- **状态**: DONE（PM 改 + 真实中转 key 双风格验证 + 用户定稿 2026-06-11）
+- **负责**: Claude（PM 直接改 prompt 内容，属文案创作能力非工程实现，走快路径）
+- **改了什么**: 大改 `build_claude_instruction` 主指令 + 两套风格规则。三轮迭代后定稿的核心规则：①「个体户只给一句话，吸引人的文案是 AI 的活，复述输入=失败」②「创意在于怎么说、不在编造事实」③「先卖体验、优惠最多提一两次垫最后」④**「每个场景必须推进到新信息，禁止换皮重复同一角度，给视频层次」**（治本规则，同时解决餐饮"三句不离钱"和口腔"三句不离未知"）。
+- **真实验证（中转 key 双风格）**: 餐饮 punchy（勾馋勾场景、优惠垫后）+ 口腔 trust（钩子→知识点→做法→破除误区→引导，有层次有信息增量），用户认可。
+- **定位共识（重要）**: prompt 只把文案稳定顶到「80 分底稿」，LLM 生成有随机性、不可能每条完美。最后 20 分的微调 + 偶尔失手的兜底，靠 M5 人工编辑。再盲调 prompt 边际收益递减——用户已决策接受波动、定稿、把精力转 M5。
+
 ### T-008 M5 网页编辑器 第一期 — 文案审改（本地）
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **状态**: DONE（Claude 复审通过 2026-06-11）
 - **负责**: Claude 出规格 → Codex 实现 → Claude 审查
 - **目标**: 本地网页，让非技术用户打开浏览器就能改 plan.json 的文案（标题/封面/发布文案/各场景字幕和口播）并存回。用户必备需求「人工微调文案」的落地。
 - **技术栈**（ADR-015）: Python+Flask 后端（复用现有逻辑、JSON API）+ 原生 HTML/JS 前端，本地运行，API 设计成可替换。
-- **第一期只做文案审改**：不做重渲染、不做投喂分页（后续期）。保存要同步 captions.srt/voiceover 文本，提示"配音视频需重新生成"，改过的 scene 置 edited=true。
-- **不改契约**: 只读写已有 plan.json 字段。
-- **施工图**: `CONTRACTS/T-008_web_editor_phase1_spec.md`（验收标准在文末）。
+- **复审怎么做的（亲自跑真实服务，无虚报）**: 四套单测全过；真起 `web_app.py` 服务，curl 实测 GET /api/project（返回店名/3场景/字幕正确）、首页 HTML 200、POST /api/project/copy 真实保存。
+- **核心红线全部验证通过**: ① POST 故意塞 start/duration=999，落盘仍是原值 0/8（篡改 timeline 无效，从 payload 白名单源头杜绝）② 顶层 scenes 与 legacy plan.scenes 双镜像同步更新 ③ 改过的 scene 置 edited=true、未变的不置 ④ analysis/audio/renders/compliance 等字段原样保留（读现有→只改文案→写回）⑤ captions.srt/voiceover_segments/video_plan.md 文本同步更新 ⑥ 空字段被拒并给字段级中文错误 ⑦ 服务绑 127.0.0.1、debug=False、原子写 plan.json。
+- **第一期只做文案审改**：不做重渲染、不做投喂分页（后续期）。
+- **不改契约**: 只读写已有 plan.json 字段，schema 未动。
+- **施工图**: `CONTRACTS/T-008_web_editor_phase1_spec.md`
 
 ### M5 后续期（待 T-008 跑通后规划）
 - **状态**: TODO（占位，未出规格）

@@ -3,6 +3,61 @@
 > 最新的交接写在最上面。任何 AI 接手前先读最近 1-2 段，就能跟上思路。
 > 固定格式见 PROTOCOL.md。
 
+## [2026-06-12 #26] Claude(Reviewer) → 你(人类)
+**改动**: 复审 T-009 一键启动，**通过，T-009 → DONE**。M5 第一期（T-008 文案审改 + T-009 一键启动）完整可用：双击 bat → 改文案 → 存回。
+**涉及文件**: 仅更新协作文档（TASKS.md T-009→DONE、STATE.md、本段）。代码未改。
+**复审怎么做的**:
+- 四套单测全过（test_web_app 含新增的 AI_VIDEO_NO_BROWSER 开关测试）。
+- 逐行核对 `start_editor.bat`：`py -3` 探测且校验版本≥3.10 → fallback `python` → 都失败给安装指引；依赖一把导入检测，缺则 `pip install -r requirements.txt` 后**复检**；plan.json 不存在给生成命令；每个出错分支 + 结尾都有 `pause`（不会一闪而过）；提示文本用 ASCII（Codex 实测中文 bat 被 cmd 解析坏，这个取舍对）；**没写死 bundled python 路径**。
+- 亲测 `web_app.py` 自动开浏览器：`open_browser_later` 用 `threading.Timer(1.0)` + daemon 线程，run 之前注册；`should_auto_open_browser` 读 `AI_VIDEO_NO_BROWSER`，亲验 =1→False、未设→True；逻辑抽成函数复用。
+- 用 bundled python 入 PATH 验证「依赖齐全时 bat 跳过 pip 直接起服务」分支。
+**验证边界（如实交代，无虚报）**: 本机系统 `py -3` 指向坏掉的 Python311（`C:\Users\?\...` 中文用户名致进程创建失败），所以我在当前环境**无法完整复跑 .bat 的「成功启动服务」全路径**。但：① .bat 逻辑逐行读过、各分支正确齐全 ② 其 fallback python 设计正好能绕开这个坏 py ③ Codex 已在其本机实跑成功路径（服务监听 127.0.0.1:5000、浏览器自动访问 / 和 /api/project 返回 200、NO_BROWSER=1 不弹窗）④ Codex 还实测了 pip install 分支（其环境 pip 源缺 Pillow>=12.0.0 致安装失败，但脚本正确进入安装流程并给出失败提示——这是包源环境问题，非脚本逻辑问题）。综合判断通过。
+**为什么通过**: 用户要的「打开方式别太复杂」已解决（双击即用）；安全（仍绑 127.0.0.1、debug off）；不碰业务 API/契约；Codex 自报验证与代码核对一致。
+**接口变化**: 无。
+**下一步建议（等你拍板）**:
+1. 把 T-009 代码（start_editor.bat、web_app.py 浏览器增强、README/test 改动）提交 GitHub。
+2. 选下一步：**M5 第二期**（增量重渲染——改完一段只重跑该段配音/画面，真正闭环「改一段只重跑一段」）/ **M5 第三期**（投喂分页，与 T-007 file provider 复用）/ **T-007 file provider** / **M4**（素材打标签+自动匹配）。
+**给你的提醒**: 你现在可以双击 `start_editor.bat` 试一下一键启动（若你系统 py 也有问题，命令行 fallback：`py -3 .\web_app.py`）。改完文案配音/视频不会自动更新——那是第二期增量重渲染的事。
+
+## [2026-06-11 #25] Codex(Dev) -> Claude(Reviewer)
+**Change**: Implemented T-009 one-click launcher for the local web editor. Added `start_editor.bat`, added delayed browser auto-open to `web_app.py`, added an `AI_VIDEO_NO_BROWSER=1` switch, updated README startup docs, and moved T-009 to REVIEW.
+
+**Files touched**:
+- Added `start_editor.bat`
+- Updated `web_app.py`
+- Updated `tests/test_web_app.py`
+- Updated `README.md`
+- Updated `Claude-Codex/STATE.md`, `Claude-Codex/TASKS.md`, and this handoff entry
+- Did not modify `CONTRACTS/` or business API/copy-edit logic
+
+**Why this design**:
+- `start_editor.bat` does not hardcode the Codex bundled Python path. It tries `py -3` first, then `python` from PATH, and requires Python 3.10+.
+- Dependency detection uses an import check for the modules needed by `web_app.py`/`run_workflow.py`: `flask`, `PIL`, `edge_tts`, `moviepy`, and `imageio_ffmpeg`. If import fails, the script runs `python -m pip install -r requirements.txt`, then checks imports again.
+- The script checks `output\plan.json` before starting the server and prints a generation command if no editable project exists.
+- Browser opening belongs in `web_app.py`, not the batch file. `web_app.py` registers `threading.Timer(1.0, webbrowser.open)` before `app.run(...)`, so Flask has time to start before the browser navigates. `AI_VIDEO_NO_BROWSER=1` disables this for tests/manual no-popup runs.
+- The batch file still starts with `chcp 65001 >nul`, but its messages are ASCII-only. I first tried Chinese batch output and cmd parsed UTF-8 text incorrectly into broken commands. ASCII keeps the double-click launcher reliable; README/HANDOFF can carry richer Chinese docs.
+
+**Interface changes**: None. No schema or CONTRACTS changes. No change to `GET /api/project` or `POST /api/project/copy` behavior.
+
+**Validation**:
+- Passed: `python tests/test_web_app.py` including the new `AI_VIDEO_NO_BROWSER` switch test.
+- Passed: `python tests/test_llm_generate.py`
+- Passed: `python tests/test_tts_generate.py`
+- Passed: `python tests/test_render_mp4.py`
+- Passed: `./scripts/check_project.ps1`
+- Manual `.bat` clean-dependency branch: created a temporary venv at `%TEMP%\ai_video_editor_t009_venv`, prepended its `Scripts` directory to PATH, and ran `start_editor.bat`. The script selected `python`, detected missing dependencies, and attempted `pip install -r requirements.txt`. The environment's pip source failed on `Pillow>=12.0.0` (`No matching distribution found`), so the script printed the dependency failure guidance and paused. This verifies the first-install branch and clear failure path; package-index availability is external.
+- Manual `.bat` success branch: prepended an existing Python with dependencies to PATH (only for validation; the script itself does not contain this path) and ran `start_editor.bat`. The script selected `python`, printed `Dependencies are ready`, started `web_app.py`, Flask listened on `127.0.0.1:5000`, and HTTP GET `/` returned 200. Server logs showed automatic browser navigation to `/` and `/api/project`.
+- Manual no-browser branch: ran `web_app.py` with `AI_VIDEO_NO_BROWSER=1`; service started and stdout contained `Browser auto-open disabled by AI_VIDEO_NO_BROWSER=1.`
+
+**Known notes for review**:
+- On this machine, Windows `py -3` exists but points to a broken Python 3.11 path (`C:\Users\...\Python311\python.exe` with a bad user-folder entry). The launcher handles that by rejecting `py -3` if the version probe fails, then falling back to `python`.
+- `./scripts/check_project.ps1` refreshes generated timestamps in `output/plan.json`; timestamps were restored after validation. A final-newline diff may still appear from the generated artifact.
+
+**Next step recommendation**:
+1. Claude should review `start_editor.bat` for Python selection, dependency install flow, no hardcoded bundled path, plan.json check, and pause-on-error behavior.
+2. Review `web_app.py` browser auto-open timing and `AI_VIDEO_NO_BROWSER=1` behavior.
+3. If accepted, mark T-009 DONE. Then T-008/T-009 can be committed together.
+
 ## [2026-06-11 #24] Claude(PM) → Codex
 **改动**: T-008 复审通过后，出 T-009 一键启动规格（用户反馈「打开方式太复杂」）。
 **涉及文件**:

@@ -111,13 +111,21 @@ Supported visual styles: `premium_luxe`, `clean_clinic`, `warm_local`, `bold_pro
 
 ## Local Copy Editor
 
-After generating `output/plan.json`, start the local review page:
+After generating `output/plan.json`, double-click this file:
 
-```powershell
-& "C:\Users\LCL\.cache\codex-runtimes\codex-primary-runtime\dependencies\python\python.exe" .\web_app.py
+```text
+start_editor.bat
 ```
 
-Then open:
+It will find a system Python installation, install missing dependencies on first launch, start the local web editor, and open the browser automatically.
+
+Command-line fallback:
+
+```powershell
+py -3 .\web_app.py
+```
+
+The editor runs at:
 
 ```text
 http://127.0.0.1:5000

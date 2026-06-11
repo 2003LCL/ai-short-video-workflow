@@ -6,7 +6,7 @@
 ## 进行中 / 待办
 
 ### T-009 网页编辑器一键启动（Windows 本地）
-- **状态**: TODO（规格就绪，待 Codex 认领改 DOING）
+- **状态**: REVIEW（Codex 已实现，待 Claude 审查）
 - **负责**: Claude 出规格 → Codex 实现 → Claude 审查
 - **目标**: 双击 `start_editor.bat` 就能用：自动找 Python → 缺依赖自动装 → 起服务 → 自动开浏览器。消除「敲长命令、记 127.0.0.1」门槛。
 - **关键现实**: 依赖目前只在 Codex bundled Python（缓存目录，不稳定，禁止写死路径）；启动脚本要用系统 py/python + 首次自动 pip install，保证可移植。
@@ -22,6 +22,14 @@
 - **施工图**: `CONTRACTS/T-007_offline_copy_spec.md`（验收标准在文末；注意次目标已完成，Codex 只做 file provider 部分）。
 
 ## 已完成
+
+### T-009 网页编辑器一键启动（Windows 本地）
+- **状态**: DONE（Claude 复审通过 2026-06-11）
+- **负责**: Claude 出规格 → Codex 实现 → Claude 审查
+- **复审怎么做的**: 四套单测全过；逐行核对 start_editor.bat（py -3 探测+版本≥3.10、fallback python、缺依赖 pip install 后复检、plan.json 检查、每个出错分支都有 pause、ASCII 提示避免中文乱码、不写死 bundled 路径）；web_app 自动开浏览器逻辑亲测（Timer 1s 延迟+daemon 线程、AI_VIDEO_NO_BROWSER=1 双重检查、抽成 should_auto_open_browser 复用）。
+- **验证边界（如实记录）**: 本机系统 `py -3` 指向一个坏掉的 Python311 路径（用户名中文致进程创建失败），当前环境无法完整复跑 .bat「成功启动服务」全路径；但 .bat 逻辑读代码确认正确、各分支齐全，且其 fallback python 逻辑正好绕开坏 py；Codex 已在其本机实跑成功路径（服务监听 5000、浏览器访问 / 和 /api/project 返回 200，NO_BROWSER=1 不弹窗）。用 bundled python 入 PATH 验证了「依赖齐全时跳过 pip 直接起服务」分支。
+- **不改业务**: 只加启动便利层；web_app 业务 API 未动。
+- **施工图**: `CONTRACTS/T-009_one_click_launch_spec.md`
 
 ### T-006b 文案 prompt 二次升级（PM 直接改，已真实验证 + 定稿）
 - **状态**: DONE（PM 改 + 真实中转 key 双风格验证 + 用户定稿 2026-06-11）

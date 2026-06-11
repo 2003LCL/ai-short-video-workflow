@@ -1,5 +1,6 @@
 import copy
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -235,6 +236,20 @@ def test_post_copy_ignores_timeline_mutation_attempts():
         assert saved["plan"]["scenes"][0]["duration"] == 8
 
 
+def test_browser_auto_open_env_switch():
+    original = os.environ.get("AI_VIDEO_NO_BROWSER")
+    try:
+        os.environ["AI_VIDEO_NO_BROWSER"] = "1"
+        assert web_app.should_auto_open_browser() is False
+        os.environ.pop("AI_VIDEO_NO_BROWSER", None)
+        assert web_app.should_auto_open_browser() is True
+    finally:
+        if original is None:
+            os.environ.pop("AI_VIDEO_NO_BROWSER", None)
+        else:
+            os.environ["AI_VIDEO_NO_BROWSER"] = original
+
+
 if __name__ == "__main__":
     test_get_project_returns_editable_copy()
     test_get_project_missing_plan_has_clear_error()
@@ -242,4 +257,5 @@ if __name__ == "__main__":
     test_post_copy_syncs_text_sidecar_outputs()
     test_post_copy_rejects_empty_copy_fields()
     test_post_copy_ignores_timeline_mutation_attempts()
+    test_browser_auto_open_env_switch()
     print("web_app tests passed")

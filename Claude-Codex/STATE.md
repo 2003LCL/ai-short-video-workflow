@@ -2,9 +2,9 @@
 
 > 单一事实来源。任何 AI 动手前先读这里，收工前必更新这里。
 
-**最后更新**: 2026-06-11 by Claude (Reviewer)
+**最后更新**: 2026-06-12 by Claude (Reviewer)
 
-> M5 网页编辑器第一期（T-008 文案审改）复审通过，DONE。
+> T-009 网页编辑器一键启动复审通过，DONE；T-008 文案审改已 DONE。M5 第一期（文案审改 + 一键启动）完整可用。
 ## 一句话定位
 
 一个面向个体商户和下沉市场的**短视频自动生成平台**：客户上传素材（图片/视频/文字/录音），
@@ -31,10 +31,10 @@ M3 已接入 MoviePy MP4 渲染，可用 `--skip-mp4` 跳过成片合成。
 
 **T-006 + T-006b 文案专项 DONE 并提交（07b1d8e）**：`build_claude_instruction` 经三轮真实迭代定稿为带货文案 prompt（个体户场景化、创意在角度不在编造、先卖体验优惠垫后、每场景必须推进新信息禁止换皮重复）；两套风格 punchy/trust 用中转 key 真实验证均有层次。中转地址已可配置（`ANTHROPIC_BASE_URL`，修了 403）。**共识：prompt 只到 80 分底稿，剩余微调靠 M5 人工兜底。**
 
-**当前焦点：M5 网页编辑器第一期（T-008）复审通过，DONE（Claude 2026-06-11）。** `web_app.py`：Flask 本地后端（绑 127.0.0.1、debug off）+ 原生 HTML/JS 页面，读 `output/plan.json`、编辑整体文案和分镜字幕/口播、只存允许的文案字段。复审亲起真实服务 curl 实测通过：篡改 start/duration 无效、顶层+legacy 双 scenes 镜像同步、改过的 scene 置 edited=true、analysis/audio/renders 原样保留、captions.srt/voiceover/video_plan.md 文本同步、空字段被拒。
+**当前焦点：T-009 网页编辑器一键启动复审通过，DONE（Claude 2026-06-12）。M5 第一期完整可用**——双击 `start_editor.bat` 自动定位系统 Python、缺依赖自动装、起服务、自动开浏览器（带 `AI_VIDEO_NO_BROWSER=1` 开关）；配合 T-008 文案审改，店主级用户已能「双击打开网页→改文案→存回」。复审验证边界：本机系统 py 指向坏掉的 Python311（中文用户名致进程失败），未能完整复跑 .bat 成功路径，但逻辑逐行核对正确、Codex 已在其本机实跑通过。
 M5 后续期（占位）：第二期增量重渲染、第三期投喂分页、更后期可视化时间轴。
 
-**等你拍板下一步**：T-008 代码（web_app.py 等）待提交 GitHub。之后可选：M5 第二期（增量重渲染）/ 第三期（投喂分页，与 T-007 file provider 复用）/ T-007 file provider / M4。
+**等你拍板下一步**：T-008/T-009 代码已提交 GitHub（dd73e2a + T-009 待提交）。可选：M5 第二期（增量重渲染——改一段只重跑该段配音/画面）/ 第三期（投喂分页，与 T-007 file provider 复用）/ T-007 file provider / M4。
 
 **T-007 离线 file provider**：次目标(中转地址可配置)已由 PM 完成；主目标(`--provider file` 人工投喂)仍待 Codex，与 M5 第三期投喂分页可复用。施工图 `CONTRACTS/T-007_offline_copy_spec.md`，ADR-014。
 
@@ -56,7 +56,7 @@ M5 后续期（占位）：第二期增量重渲染、第三期投喂分页、�
 - [x] M2: 接 TTS —— voiceover_segments 真正出声（edge-tts 试水）✅ DONE（已提交 GitHub 41c18c0）
 - [x] M3: FFmpeg/Remotion 出真 MP4（替代 GIF/HTML 预览）✅ DONE（复审通过，720p H.264+AAC，配音不切断）
 - [ ] M4: 素材打标签 + 自动匹配（产品护城河，最大瓶颈）
-- [ ] M5: 审核 Web 界面 + 增量重渲染（改一段只重跑一段）← **进行中：第一期 T-008 文案审改已 DONE（复审通过），后续期做增量重渲染**
+- [ ] M5: 审核 Web 界面 + 增量重渲染（改一段只重跑一段）← **进行中：第一期（T-008 文案审改 + T-009 一键启动）已 DONE，后续期做增量重渲染**
 - [ ] M6: 多平台版本输出（重渲染）
 - [ ] M7: 发布 + 数据回流（能手动先手动）
 

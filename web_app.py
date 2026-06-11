@@ -1,6 +1,8 @@
 import json
 import os
 import tempfile
+import threading
+import webbrowser
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template_string, request
@@ -235,6 +237,18 @@ def api_error(message: str, status: int = 400, errors: dict | None = None):
     if errors:
         body["errors"] = errors
     return jsonify(body), status
+
+
+def should_auto_open_browser() -> bool:
+    return os.environ.get("AI_VIDEO_NO_BROWSER", "").strip() != "1"
+
+
+def open_browser_later(url: str, delay_seconds: float = 1.0) -> None:
+    if not should_auto_open_browser():
+        return
+    timer = threading.Timer(delay_seconds, lambda: webbrowser.open(url))
+    timer.daemon = True
+    timer.start()
 
 
 @app.get("/")
@@ -603,7 +617,13 @@ INDEX_HTML = r"""<!doctype html>
 
 
 def main() -> None:
-    print(f"Web editor: http://{HOST}:{PORT}")
+    url = f"http://{HOST}:{PORT}"
+    print(f"Web editor: {url}")
+    if should_auto_open_browser():
+        print("Opening browser automatically...")
+    else:
+        print("Browser auto-open disabled by AI_VIDEO_NO_BROWSER=1.")
+    open_browser_later(url)
     app.run(host=HOST, port=PORT, debug=False)
 
 
